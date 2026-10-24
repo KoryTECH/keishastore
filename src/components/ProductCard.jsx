@@ -1,10 +1,10 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import BookCover from './BookCover.jsx'
 import Stars from './Stars.jsx'
 import { money, getTypeLabel } from '../data/products.js'
 
 export default function ProductCard({ product, onAdded }) {
-  const navigate = useNavigate()
   const onSale = product.oldPrice != null && product.oldPrice > product.price
   const percent = onSale ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) : 0
 
@@ -19,6 +19,10 @@ export default function ProductCard({ product, onAdded }) {
       </div>
 
       <div className="pc-body">
+        <div className="pc-meta-row">
+          <span className="pc-meta-label">{product.category}</span>
+        </div>
+
         <Link to={`/product/${product.id}`}>
           <h3 className="pc-title">{product.title}</h3>
         </Link>
@@ -31,20 +35,21 @@ export default function ProductCard({ product, onAdded }) {
           <span className="pc-rating-count">({product.reviews})</span>
         </span>
 
-        <div className="pc-price">
-          <span className={`now ${onSale ? 'gold' : ''}`}>{money(product.price)}</span>
-          {onSale && <span className="was">{money(product.oldPrice)}</span>}
+        <div className="pc-foot">
+          <span className="pc-price">
+            <span className={`now ${onSale ? 'gold' : ''}`}>{money(product.price)}</span>
+            {onSale && <span className="was">{money(product.oldPrice)}</span>}
+          </span>
+          <button
+            className="btn-text"
+            onClick={(e) => {
+              e.stopPropagation()
+              onAdded()
+            }}
+          >
+            Add to Cart <ArrowRight size={13} />
+          </button>
         </div>
-
-        <button
-          className="btn btn-primary btn-sm btn-block"
-          onClick={(e) => {
-            e.stopPropagation()
-            onAdded()
-          }}
-        >
-          Add To Cart
-        </button>
       </div>
     </article>
   )

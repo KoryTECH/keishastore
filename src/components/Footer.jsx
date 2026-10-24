@@ -5,6 +5,9 @@ export default function Footer() {
   return (
     <footer className="footer">
       <div className="container">
+        <span className="footer-word" aria-hidden="true">
+          Keisha <em>Store</em>
+        </span>
         <div className="footer-grid">
           <div className="footer-brand">
             <Link to="/" className="brand">

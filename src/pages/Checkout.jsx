@@ -228,7 +228,7 @@ export default function Checkout() {
               </div>
               <div className="sum-row">
                 <span>Delivery</span>
-                <span style={{ color: 'var(--gold-deep)', fontWeight: 600 }}>Instant · Free</span>
+                <span className="free">Instant · Free</span>
               </div>
               <div className="sum-row total">
                 <span>Total</span>

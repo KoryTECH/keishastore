@@ -3,10 +3,10 @@ import { Search, ShoppingBag, LibraryBig } from 'lucide-react'
 import { useCart } from '../context/CartContext.jsx'
 
 const LINKS = [
-  { to: '/', label: 'Home' },
-  { to: '/shop', label: 'Shop' },
-  { to: '/shop?type=course', label: 'Courses' },
-  { to: '/shop?type=ebook', label: 'E-books' },
+  { to: '/', label: 'Home', n: '01' },
+  { to: '/shop', label: 'Shop', n: '02' },
+  { to: '/shop?type=course', label: 'Courses', n: '03' },
+  { to: '/shop?type=ebook', label: 'E-books', n: '04' },
 ]
 
 export default function Navbar() {
@@ -25,7 +25,7 @@ export default function Navbar() {
       <div className="container nav-inner">
         <Link to="/" className="brand">
           <span className="brand-mark">
-            <LibraryBig size={20} />
+            <LibraryBig size={19} />
           </span>
           <span className="brand-name">
             Keisha Store
@@ -36,6 +36,7 @@ export default function Navbar() {
         <nav className="nav-links">
           {LINKS.map((l) => (
             <Link key={l.label} to={l.to} className={`nav-link${isActive(l.to) ? ' active' : ''}`}>
+              <span className="nav-link-n">{l.n}</span>
               {l.label}
             </Link>
           ))}
