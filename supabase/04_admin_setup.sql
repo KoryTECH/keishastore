@@ -10,7 +10,7 @@ update public.profiles
 set is_admin = true
 where id in (
   select id from auth.users
-  where email = 'YOUR_EMAIL_HERE@example.com'   -- <<< EDIT ME
+  where email = 'testingemail@gmail.com'  -- <<< EDIT ME
 );
 
 -- STEP 2: verify — you should see your email with is_admin = true

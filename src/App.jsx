@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { CartProvider } from './context/CartContext.jsx'
 import { AdminProvider } from './context/AdminContext.jsx'
+import { AuthProvider } from './context/AuthContext.jsx'
 import TopBar from './components/TopBar.jsx'
 import Navbar from './components/Navbar.jsx'
 import Footer from './components/Footer.jsx'
@@ -10,6 +11,8 @@ import Shop from './pages/Shop.jsx'
 import ProductDetail from './pages/ProductDetail.jsx'
 import Cart from './pages/Cart.jsx'
 import Checkout from './pages/Checkout.jsx'
+import Login from './pages/Login.jsx'
+import Signup from './pages/Signup.jsx'
 import Admin from './pages/Admin.jsx'
 
 // Storefront layout with chrome; Admin renders its own full-bleed layout.
@@ -26,17 +29,20 @@ function Storefront({ children }) {
 
 export default function App() {
   return (
-    <AdminProvider>
-      <CartProvider>
-        <ScrollToTop />
-        <Routes>
-          <Route path="/" element={<Storefront><Home /></Storefront>} />
-          <Route path="/shop" element={<Storefront><Shop /></Storefront>} />
-          <Route path="/product/:id" element={<Storefront><ProductDetail /></Storefront>} />
-          <Route path="/cart" element={<Storefront><Cart /></Storefront>} />
-          <Route path="/checkout" element={<Storefront><Checkout /></Storefront>} />
-          <Route path="/admin" element={<Admin />} />
-          <Route
+    <AuthProvider>
+      <AdminProvider>
+        <CartProvider>
+          <ScrollToTop />
+          <Routes>
+            <Route path="/" element={<Storefront><Home /></Storefront>} />
+            <Route path="/shop" element={<Storefront><Shop /></Storefront>} />
+            <Route path="/product/:id" element={<Storefront><ProductDetail /></Storefront>} />
+            <Route path="/cart" element={<Storefront><Cart /></Storefront>} />
+            <Route path="/checkout" element={<Storefront><Checkout /></Storefront>} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/admin" element={<Admin />} />
+            <Route
             path="*"
             element={
               <Storefront>
@@ -55,5 +61,6 @@ export default function App() {
         </Routes>
       </CartProvider>
     </AdminProvider>
+    </AuthProvider>
   )
 }

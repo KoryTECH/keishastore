@@ -4,6 +4,7 @@ import { CreditCard, Banknote, Wallet, ShieldCheck, Lock, BookOpen, GraduationCa
 import { useCart } from '../context/CartContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
 import BookCover from '../components/BookCover.jsx'
+import Toast from '../components/Toast.jsx'
 import { money, getTypeLabel } from '../data/products.js'
 
 const PAY_METHODS = [
@@ -19,6 +20,13 @@ export default function Checkout() {
 
   const [form, setForm] = useState({ name: '', email: '', method: 'card' })
   const [placed, setPlaced] = useState(null) // { ref, total } after success
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    window.clearTimeout(showToast._t)
+    showToast._t = window.setTimeout(() => setToast(''), 2800)
+  }
 
   const lines = items
     .map((it) => ({ ...it, product: productById(it.id) }))
@@ -75,21 +83,24 @@ export default function Checkout() {
   // ---- Checkout form ----
   const canPay = form.name.trim() && /.+@.+\..+/.test(form.email) && form.method
 
-  const placeOrder = (e) => {
+  const placeOrder = async (e) => {
     e.preventDefault()
     if (!canPay) return
-    const ref = `KS-${Math.floor(1050 + Math.random() * 8999)}`
-    addOrder({
-      id: ref,
-      customer: form.name.trim(),
-      email: form.email.trim(),
-      items: items.map((it) => ({ id: it.id, qty: it.qty })),
-      total: subtotal,
-      status: 'paid',
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    })
-    setPlaced({ ref, total: subtotal, email: form.email.trim() })
-    clear()
+    const ref = `KS-${Date.now().toString().slice(-6)}`
+    try {
+      await addOrder({
+        id: ref,
+        customer: form.name.trim(),
+        email: form.email.trim(),
+        items: items.map((it) => ({ id: it.id, qty: it.qty })),
+        total: subtotal,
+        status: 'paid',
+      })
+      setPlaced({ ref, total: subtotal, email: form.email.trim() })
+      clear()
+    } catch (err) {
+      showToast(`Order could not be saved — ${err.message}`)
+    }
   }
 
   const bind = (key) => ({
@@ -256,6 +267,8 @@ export default function Checkout() {
           </form>
         </div>
       </section>
+
+      <Toast message={toast} />
     </>
   )
 }

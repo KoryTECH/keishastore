@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   LibraryBig,
   LayoutDashboard,
@@ -7,7 +7,6 @@ import {
   ShoppingCart,
   Store,
   LogOut,
-  Lock,
   Trash2,
   Plus,
   TrendingUp,
@@ -15,6 +14,7 @@ import {
   ClipboardList,
   ShieldCheck,
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
 import Toast from '../components/Toast.jsx'
 import { money, getTypeLabel, CATEGORIES, COVER_GRADIENTS } from '../data/products.js'
@@ -26,71 +26,33 @@ const TABS = [
 ]
 
 export default function Admin() {
-  const { isAdmin } = useAdmin()
-  return isAdmin ? <AdminPanel /> : <AdminLogin />
-}
+  const { user, profile, isAdmin, loading } = useAuth()
 
-/* ================= LOGIN ================= */
-function AdminLogin() {
-  const { login } = useAdmin()
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState(false)
-
-  const submit = (e) => {
-    e.preventDefault()
-    if (login(password)) {
-      setPassword('')
-      setError(false)
-    } else {
-      setError(true)
-    }
+  // restore-circle: wait for Supabase to tell us who this is
+  if (loading) {
+    return (
+      <div className="admin-boot" role="status">
+        <span className="brand-mark" style={{ width: 52, height: 52 }}>
+          <LibraryBig size={24} />
+        </span>
+        Checking your credentials…
+      </div>
+    )
   }
 
-  return (
-    <div className="admin-login">
-      <form className="admin-login-card fade-up" onSubmit={submit}>
-        <div className="brand">
-          <span className="brand-mark">
-            <LibraryBig size={20} />
-          </span>
-          <span className="brand-name">
-            Keisha Store
-            <span className="brand-sub">Owner Access</span>
-          </span>
-        </div>
-        <h1>Sign in to your dashboard</h1>
-        <p>Manage products, orders and earnings from one place.</p>
+  // not signed in at all -> the auth page (returns here after)
+  if (!user) return <Navigate to="/login?next=/admin" replace />
 
-        {error && <div className="login-error">Wrong password. Try again.</div>}
+  // signed up but not the store owner -> straight back to the shop
+  if (profile && !isAdmin) return <Navigate to="/" replace />
 
-        <div className="field" style={{ textAlign: 'left', marginBottom: 16 }}>
-          <label htmlFor="admin-pass">Password</label>
-          <input
-            id="admin-pass"
-            type="password"
-            placeholder="Enter admin password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-          />
-        </div>
-        <button type="submit" className="btn btn-primary btn-block">
-          <Lock size={14} /> Enter Dashboard
-        </button>
-        <div className="admin-hint">
-          Demo password: <code>admin123</code> (replaced by real auth + database later)
-        </div>
-        <Link to="/" className="link-gold small" style={{ display: 'inline-block', marginTop: 14 }}>
-          Back to store
-        </Link>
-      </form>
-    </div>
-  )
+  return <AdminPanel />
 }
 
-/* ================= PANEL (shell + tabs) ================= */
+/* ================= SHELL + TABS ================= */
 function AdminPanel() {
-  const { logout } = useAdmin()
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
   const [tab, setTab] = useState('dashboard')
 
   return (
@@ -98,7 +60,7 @@ function AdminPanel() {
       <aside className="admin-side">
         <Link to="/" className="brand">
           <span className="brand-mark" style={{ background: 'var(--green-700)' }}>
-            <LibraryBig size={20} />
+            <LibraryBig size={19} />
           </span>
           <span className="brand-name" style={{ color: 'var(--cream)' }}>
             Keisha Store
@@ -117,7 +79,13 @@ function AdminPanel() {
           <Link to="/" className="admin-nav-item">
             <Store size={17} /> View Store
           </Link>
-          <button className="admin-nav-item" onClick={logout}>
+          <button
+            className="admin-nav-item"
+            onClick={async () => {
+              await signOut()
+              navigate('/')
+            }}
+          >
             <LogOut size={17} /> Sign Out
           </button>
         </div>
@@ -134,7 +102,7 @@ function AdminPanel() {
 
 /* ================= DASHBOARD ================= */
 function Dashboard({ setTab }) {
-  const { stats, orders, products } = useAdmin()
+  const { stats, products, orders, loadingOrders } = useAdmin()
   const s = stats()
 
   const cards = [
@@ -144,7 +112,7 @@ function Dashboard({ setTab }) {
       sub: `${s.pending} pending payment${s.pending === 1 ? '' : 's'}`,
       icon: ClipboardList,
     },
-    { label: 'Total Earnings', value: money(s.revenue), sub: 'After refunds excluded', icon: DollarSign, gold: true },
+    { label: 'Total Earnings', value: money(s.revenue), sub: 'Refunds excluded', icon: DollarSign, gold: true },
     { label: 'Units Sold', value: s.units, sub: 'Books + courses delivered', icon: TrendingUp },
     { label: 'Live Products', value: s.productCount, sub: 'Across all categories', icon: Package },
   ]
@@ -196,22 +164,39 @@ function Dashboard({ setTab }) {
             </tr>
           </thead>
           <tbody>
-            {orders.slice(0, 6).map((o) => (
-              <tr key={o.id}>
-                <td><b>#{o.id}</b></td>
-                <td>{o.customer}</td>
-                <td className="muted">
-                  {o.items
-                    .map((it) => products.find((p) => p.id === it.id)?.title)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .join(', ') + (o.items.length > 2 ? ` +${o.items.length - 2} more` : '')}
+            {loadingOrders ? (
+              <tr>
+                <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  Loading orders…
                 </td>
-                <td><b>{money(o.total)}</b></td>
-                <td><StatusPill status={o.status} /></td>
-                <td className="muted">{o.date}</td>
               </tr>
-            ))}
+            ) : (
+              <>
+                {orders.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                      No orders yet — they will show up here the moment the first sale lands.
+                    </td>
+                  </tr>
+                )}
+                {orders.slice(0, 6).map((o) => (
+                  <tr key={o.id}>
+                    <td><b>#{o.id}</b></td>
+                    <td>{o.customer}</td>
+                    <td className="muted">
+                      {o.items
+                        .map((it) => products.find((p) => p.id === it.id)?.title)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join(', ') + (o.items.length > 2 ? ` +${o.items.length - 2} more` : '')}
+                    </td>
+                    <td><b>{money(o.total)}</b></td>
+                    <td><StatusPill status={o.status} /></td>
+                    <td className="muted">{o.date}</td>
+                  </tr>
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -225,14 +210,14 @@ function StatusPill({ status }) {
 
 /* ================= PRODUCTS ================= */
 function ProductsTab() {
-  const { products, orders, addProduct, deleteProduct } = useAdmin()
+  const { products, orders, loadingProducts, addProduct, deleteProduct } = useAdmin()
   const [toast, setToast] = useState('')
   const [showForm, setShowForm] = useState(false)
 
   const showToast = (msg) => {
     setToast(msg)
     window.clearTimeout(showToast._t)
-    showToast._t = window.setTimeout(() => setToast(''), 2200)
+    showToast._t = window.setTimeout(() => setToast(''), 2600)
   }
 
   const salesFor = (id) =>
@@ -241,12 +226,21 @@ function ProductsTab() {
       0,
     )
 
+  const remove = async (p) => {
+    try {
+      await deleteProduct(p.id)
+      showToast(`"${p.title}" removed from the shelf`)
+    } catch (err) {
+      showToast(`Could not remove "${p.title}" — ${err.message}`)
+    }
+  }
+
   return (
     <>
       <div className="admin-head">
         <div>
           <h1>Products</h1>
-          <span className="muted">{products.length} live on the shelf — add books or courses.</span>
+          <span className="muted">{products.length} live in the database — add books or courses.</span>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
           <Plus size={14} /> {showForm ? 'Close form' : 'Add Product'}
@@ -256,10 +250,14 @@ function ProductsTab() {
       {showForm && (
         <div className="table-card card-pad fade-up" style={{ marginBottom: 26 }}>
           <AddProductForm
-            onSaved={(p) => {
-              addProduct(p)
-              showToast(`"${p.title}" is live on the shelf`)
-              setShowForm(false)
+            onSaved={async (p) => {
+              try {
+                await addProduct(p)
+                showToast(`"${p.title}" is live on the shelf`)
+                setShowForm(false)
+              } catch (err) {
+                showToast(`Could not add product — ${err.message}`)
+              }
             }}
           />
         </div>
@@ -282,35 +280,46 @@ function ProductsTab() {
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <b>{p.title}</b>
-                  <br />
-                  <span className="muted small">by {p.author}</span>
-                </td>
-                <td>
-                  <span className={`type-tag ${p.type === 'course' ? 'type-course' : 'type-book'}`}>
-                    {getTypeLabel(p.type)}
-                  </span>
-                </td>
-                <td>{p.category}</td>
-                <td><b>{money(p.price)}</b></td>
-                <td>{salesFor(p.id)}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button
-                    className="icon-btn"
-                    aria-label={`Delete ${p.title}`}
-                    onClick={() => {
-                      deleteProduct(p.id)
-                      showToast(`"${p.title}" removed from the shelf`)
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+            {loadingProducts ? (
+              <tr>
+                <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  Loading products from the database…
                 </td>
               </tr>
-            ))}
+            ) : products.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  The shelf is empty — add your first product above.
+                </td>
+              </tr>
+            ) : (
+              products.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <b>{p.title}</b>
+                    <br />
+                    <span className="muted small">by {p.author}</span>
+                  </td>
+                  <td>
+                    <span className={`type-tag ${p.type === 'course' ? 'type-course' : 'type-book'}`}>
+                      {getTypeLabel(p.type)}
+                    </span>
+                  </td>
+                  <td>{p.category}</td>
+                  <td><b>{money(p.price)}</b></td>
+                  <td>{salesFor(p.id)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="icon-btn"
+                      aria-label={`Delete ${p.title}`}
+                      onClick={() => remove(p)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -331,33 +340,38 @@ function AddProductForm({ onSaved }) {
     description: '',
   })
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const bind = (key) => ({
     value: f[key],
     onChange: (e) => setF((prev) => ({ ...prev, [key]: e.target.value })),
   })
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     const price = Number(f.price)
     if (!f.title.trim() || !f.author.trim() || !price || price <= 0) {
       setErr('Give the product a title, an author and a valid price.')
       return
     }
-    const gradient = Math.floor(Math.random() * COVER_GRADIENTS.length)
-    onSaved({
-      title: f.title.trim(),
-      author: f.author.trim(),
-      type: f.type,
-      category: f.category,
-      price,
-      oldPrice: Number(f.oldPrice) || null,
-      rating: 0,
-      reviews: 0,
-      gradient,
-      description: f.description.trim() || 'A fresh addition to the Keisha Store shelf. Full description coming soon.',
-      ...(f.type === 'course' ? { lessons: 10, hours: 4 } : { pages: 100 }),
-    })
+    setSaving(true)
+    try {
+      await onSaved({
+        title: f.title.trim(),
+        author: f.author.trim(),
+        type: f.type,
+        category: f.category,
+        price,
+        oldPrice: Number(f.oldPrice) || null,
+        rating: 0,
+        reviews: 0,
+        gradient: Math.floor(Math.random() * COVER_GRADIENTS.length),
+        description: f.description.trim() || 'A fresh addition to the Keisha Store shelf. Full description coming soon.',
+        ...(f.type === 'course' ? { lessons: 10, hours: 4 } : { pages: 100 }),
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -404,8 +418,8 @@ function AddProductForm({ onSaved }) {
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-        <button type="submit" className="btn btn-primary">
-          <Plus size={14} /> Add Product to Shelf
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          <Plus size={14} /> {saving ? 'Saving…' : 'Add Product to Shelf'}
         </button>
       </div>
     </form>
@@ -414,7 +428,7 @@ function AddProductForm({ onSaved }) {
 
 /* ================= ORDERS ================= */
 function OrdersTab() {
-  const { orders, products } = useAdmin()
+  const { orders, products, loadingOrders } = useAdmin()
 
   const rows = orders
   const paid = rows.filter((o) => o.status === 'paid')
@@ -449,34 +463,44 @@ function OrdersTab() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((o) => (
-              <tr key={o.id}>
-                <td><b>#{o.id}</b></td>
-                <td>
-                  {o.customer}
-                  <br />
-                  <span className="muted small">{o.email}</span>
-                </td>
-                <td className="muted">
-                  {o.items
-                    .map((it) => {
-                      const p = products.find((pr) => pr.id === it.id)
-                      return p ? `${p.title} × ${it.qty}` : null
-                    })
-                    .filter(Boolean)
-                    .join(', ')}
-                </td>
-                <td><b>{money(o.total)}</b></td>
-                <td><StatusPill status={o.status} /></td>
-                <td className="muted">{o.date}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
+            {loadingOrders ? (
               <tr>
                 <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
-                  No orders yet — they will show up here the moment the first sale lands.
+                  Loading orders…
                 </td>
               </tr>
+            ) : (
+              <>
+                {rows.map((o) => (
+                  <tr key={o.id}>
+                    <td><b>#{o.id}</b></td>
+                    <td>
+                      {o.customer}
+                      <br />
+                      <span className="muted small">{o.email}</span>
+                    </td>
+                    <td className="muted">
+                      {o.items
+                        .map((it) => {
+                          const p = products.find((pr) => pr.id === it.id)
+                          return p ? `${p.title} × ${it.qty}` : null
+                        })
+                        .filter(Boolean)
+                        .join(', ')}
+                    </td>
+                    <td><b>{money(o.total)}</b></td>
+                    <td><StatusPill status={o.status} /></td>
+                    <td className="muted">{o.date}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                      No orders yet — they will show up here the moment the first sale lands.
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>

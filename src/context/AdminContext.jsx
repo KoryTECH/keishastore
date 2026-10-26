@@ -1,107 +1,193 @@
-import { createContext, useContext, useMemo, useState } from 'react'
-import { SEED_PRODUCTS, SEED_ORDERS } from '../data/products.js'
-
-const ADMIN_PASSWORD = 'admin123'
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase.js'
 
 const AdminContext = createContext(null)
 
-function loadStore(key, seed) {
-  try {
-    const raw = window.localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : seed
-  } catch {
-    return seed
-  }
-}
+// Postgres uses snake_case; the app uses camelCase.
+const toApp = (row) => ({
+  id: row.id,
+  title: row.title,
+  author: row.author,
+  type: row.type,
+  category: row.category,
+  price: Number(row.price),
+  oldPrice: row.old_price == null ? null : Number(row.old_price),
+  rating: Number(row.rating ?? 0),
+  reviews: Number(row.reviews ?? 0),
+  pages: row.pages ?? null,
+  lessons: row.lessons ?? null,
+  hours: row.hours == null ? null : Number(row.hours),
+  gradient: row.gradient ?? 0,
+  description: row.description ?? '',
+})
 
-export function AdminProvider({ children }) {
-  const [products, setProducts] = useState(() => loadStore('keisha.products', SEED_PRODUCTS))
-  const [orders, setOrders] = useState(() => loadStore('keisha.orders', SEED_ORDERS))
-  const [isAdmin, setIsAdmin] = useState(() => {
-    try {
-      return window.localStorage.getItem('keisha.isAdmin') === '1'
-    } catch {
-      return false
-    }
+const toDb = (p) => ({
+  title: p.title,
+  author: p.author,
+  type: p.type,
+  category: p.category,
+  price: p.price,
+  old_price: p.oldPrice ?? null,
+  rating: p.rating ?? 0,
+  reviews: p.reviews ?? 0,
+  pages: p.pages ?? null,
+  lessons: p.lessons ?? null,
+  hours: p.hours ?? null,
+  gradient: p.gradient ?? 0,
+  description: p.description ?? '',
+})
+
+const fmtDate = (ts) =>
+  new Date(ts).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   })
 
-  // ---- persistence ----
-  const persist = (key, value) => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value))
-    } catch {
-      /* storage unavailable */
+export function AdminProvider({ children }) {
+  const [products, setProducts] = useState([])
+  const [loadingProducts, setLoadingProducts] = useState(true)
+  const [productsError, setProductsError] = useState('')
+
+  const [orders, setOrders] = useState([])
+  const [loadingOrders, setLoadingOrders] = useState(true)
+
+  // ---------- catalog ----------
+  const fetchProducts = useCallback(async () => {
+    setLoadingProducts(true)
+    setProductsError('')
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (error) setProductsError(error.message)
+    setProducts((data ?? []).map(toApp))
+    setLoadingProducts(false)
+  }, [])
+
+  const addProduct = useCallback(async (product) => {
+    const { data, error } = await supabase
+      .from('products')
+      .insert(toDb(product))
+      .select('*')
+      .single()
+    if (error) throw error
+    setProducts((prev) => [toApp(data), ...prev])
+    return toApp(data)
+  }, [])
+
+  const deleteProduct = useCallback(async (id) => {
+    const { error } = await supabase.from('products').delete().eq('id', id)
+    if (error) throw error
+    setProducts((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  const productById = useCallback(
+    (id) => products.find((p) => p.id === id),
+    [products],
+  )
+
+  // ---------- orders (for the admin dashboard) ----------
+  const fetchOrders = useCallback(async () => {
+    setLoadingOrders(true)
+    const { data } = await supabase
+      .from('orders')
+      .select('*, order_items (*)')
+      .order('created_at', { ascending: false })
+    setOrders(
+      (data ?? []).map((o) => ({
+        id: o.id,
+        customer: o.customer,
+        email: o.email,
+        total: Number(o.total),
+        status: o.status,
+        date: fmtDate(o.created_at),
+        items: (o.order_items ?? []).map((it) => ({ id: it.product_id, qty: it.qty })),
+      })),
+    )
+    setLoadingOrders(false)
+  }, [])
+
+  // Called by Checkout — inserts the order + its items. Works for
+  // guests (user_id null) and logged-in users (user_id attached).
+  const addOrder = useCallback(async ({ id, customer, email, items, total, status }) => {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { error } = await supabase.from('orders').insert({
+      id,
+      user_id: user?.id ?? null,
+      customer,
+      email,
+      total,
+      status: status ?? 'paid',
+    })
+    if (error) throw error
+
+    const rows = items.map((it) => ({
+      order_id: id,
+      product_id: it.id,
+      qty: it.qty,
+      price: productById(it.id)?.price ?? 0,
+    }))
+    if (rows.length > 0) {
+      const { error: itemsError } = await supabase.from('order_items').insert(rows)
+      if (itemsError) throw itemsError
     }
-  }
+
+    // refresh the dashboard list (silently — only admins can read)
+    fetchOrders().catch(() => {})
+    return { id }
+  }, [productById, fetchOrders])
+
+  useEffect(() => {
+    fetchProducts()
+    fetchOrders()
+  }, [fetchProducts, fetchOrders])
+
+  // ---------- stats ----------
+  const stats = useCallback(() => {
+    const paid = orders.filter((o) => o.status === 'paid')
+    const revenue = paid.reduce((sum, o) => sum + o.total, 0)
+    const units = orders.reduce((sum, o) => sum + o.items.reduce((s, it) => s + it.qty, 0), 0)
+    return {
+      orderCount: orders.length,
+      revenue,
+      units,
+      productCount: products.length,
+      avgOrder: paid.length ? revenue / paid.length : 0,
+      pending: orders.filter((o) => o.status === 'pending').length,
+    }
+  }, [orders, products.length])
 
   const api = useMemo(
     () => ({
-      isAdmin,
-      login(password) {
-        const ok = password === ADMIN_PASSWORD
-        setIsAdmin(ok)
-        try {
-          window.localStorage.setItem('keisha.isAdmin', ok ? '1' : '0')
-        } catch {
-          /* ignore */
-        }
-        return ok
-      },
-      logout() {
-        setIsAdmin(false)
-        try {
-          window.localStorage.setItem('keisha.isAdmin', '0')
-        } catch {
-          /* ignore */
-        }
-      },
-
-      // ---- catalog ----
       products,
-      productById(id) {
-        return products.find((p) => p.id === id)
-      },
-      addProduct(product) {
-        setProducts((prev) => {
-          const next = [{ ...product, id: `p${Date.now()}` }, ...prev]
-          persist('keisha.products', next)
-          return next
-        })
-      },
-      deleteProduct(id) {
-        setProducts((prev) => {
-          const next = prev.filter((p) => p.id !== id)
-          persist('keisha.products', next)
-          return next
-        })
-      },
-
-      // ---- orders ----
+      loadingProducts,
+      productsError,
+      productById,
+      addProduct,
+      deleteProduct,
+      refreshProducts: fetchProducts,
       orders,
-      addOrder(order) {
-        setOrders((prev) => {
-          const next = [order, ...prev]
-          persist('keisha.orders', next)
-          return next
-        })
-      },
-
-      // ---- computed stats ----
-      stats() {
-        const paid = orders.filter((o) => o.status === 'paid')
-        const revenue = paid.reduce((sum, o) => sum + o.total, 0)
-        const units = orders.reduce((sum, o) => sum + o.items.reduce((s, it) => s + it.qty, 0), 0)
-        return {
-          orderCount: orders.length,
-          revenue,
-          units,
-          productCount: products.length,
-          avgOrder: paid.length ? revenue / paid.length : 0,
-          pending: orders.filter((o) => o.status === 'pending').length,
-        }
-      },
+      loadingOrders,
+      refreshOrders: fetchOrders,
+      addOrder,
+      stats,
     }),
-    [products, orders, isAdmin],
+    [
+      products,
+      loadingProducts,
+      productsError,
+      productById,
+      addProduct,
+      deleteProduct,
+      fetchProducts,
+      orders,
+      loadingOrders,
+      fetchOrders,
+      addOrder,
+      stats,
+    ],
   )
 
   return <AdminContext.Provider value={api}>{children}</AdminContext.Provider>

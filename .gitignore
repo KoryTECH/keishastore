@@ -2,3 +2,8 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# Local env files (contains Supabase keys — never commit)
+.env
+.env.local
+.env.*.local

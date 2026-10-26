@@ -9,8 +9,10 @@ Everything you need to wire the store to Supabase. Run the SQL files
 |-------|------|--------------|
 | 1 | `01_schema.sql` | Tables: `profiles`, `products`, `orders`, `order_items` + signup trigger + anti-escalation guard |
 | 2 | `02_rls.sql` | Row Level Security — the actual security boundary for the publishable key |
-| 3 | `03_seed.sql` | Loads the 14 current products + 8 sample orders |
-| 4 | `04_admin_setup.sql` | Runtime after you sign up: edit `admin_email`, run it to promote your account |
+| 3 | `03_seed.sql` | *Optional demo data* — 14 products + 8 sample orders for testing |
+| 4 | `05_relax_order_items_fk.sql` | Lets admins delete products that appear in past orders (already included in fresh `01`, run for DBs created before this) |
+| 5 | `04_admin_setup.sql` | Runtime after you sign up: edit `admin_email`, run it to promote your account |
+| ? | `99_remove_seed_data.sql` | *Optional cleanup* — wipes the demo data from 03 only |
 
 ## After the SQL
 
@@ -27,8 +29,14 @@ VITE_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 ```
 
-6. We then wire `AdminContext` / `CartContext` to read/write Supabase
-   (cart stays in localStorage; orders are written at checkout).
+After the SQL, the store is wired up (already done in the code):
+
+- `src/lib/supabase.js` — Supabase client using the two env vars above
+- `src/context/AuthContext.jsx` — real Supabase Auth: signup, login, sign-out, session restore
+- `src/context/AdminContext.jsx` — products/orders read live from the database;
+  admin add/delete writes to the DB; checkout inserts real `orders` + `order_items`
+- `/admin` is gated: visitors without an account → `/login`; signed-up
+  non-admins (no `is_admin` flag) → redirected to the home page
 
 ## Security model (why the publishable key is safe to ship)
 

@@ -128,7 +128,7 @@ create table if not exists public.orders (
 create table if not exists public.order_items (
   id         uuid primary key default gen_random_uuid(),
   order_id   text not null references public.orders (id) on delete cascade,
-  product_id text not null references public.products (id),
+  product_id text not null,   -- historical snapshot, no FK: admins may delete archived products
   qty        integer not null check (qty > 0),
   price      numeric(10,2) not null check (price >= 0)
 );
