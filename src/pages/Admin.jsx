@@ -428,7 +428,24 @@ function AddProductForm({ onSaved }) {
 
 /* ================= ORDERS ================= */
 function OrdersTab() {
-  const { orders, products, loadingOrders } = useAdmin()
+  const { orders, products, loadingOrders, updateOrderStatus } = useAdmin()
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    window.clearTimeout(showToast._t)
+    showToast._t = window.setTimeout(() => setToast(''), 2600)
+  }
+
+  const changeStatus = async (o, status) => {
+    const prev = o.status
+    try {
+      await updateOrderStatus(o.id, status)
+      showToast(`Order #${o.id} marked ${status}`)
+    } catch (err) {
+      showToast(`Could not update order — ${err.message}`)
+    }
+  }
 
   const rows = orders
   const paid = rows.filter((o) => o.status === 'paid')
@@ -448,7 +465,7 @@ function OrdersTab() {
         <div className="table-head">
           <h3>All Orders</h3>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} className="muted small">
-            <ShieldCheck size={14} /> Refunds and receipts arrive with the payment system
+            <ShieldCheck size={14} /> Set the status when payment is confirmed off-site
           </span>
         </div>
         <table className="nice">
@@ -489,7 +506,26 @@ function OrdersTab() {
                         .join(', ')}
                     </td>
                     <td><b>{money(o.total)}</b></td>
-                    <td><StatusPill status={o.status} /></td>
+                    <td>
+                      <select
+                        className={`status-pill status-${o.status}`}
+                        style={{
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          padding: '6px 10px',
+                          textTransform: 'uppercase',
+                          outline: '2px solid transparent',
+                        }}
+                        value={o.status}
+                        onChange={(e) => changeStatus(o, e.target.value)}
+                        aria-label={`Status for order ${o.id}`}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="paid">Paid</option>
+                        <option value="refunded">Refunded</option>
+                      </select>
+                    </td>
                     <td className="muted">{o.date}</td>
                   </tr>
                 ))}
@@ -505,6 +541,8 @@ function OrdersTab() {
           </tbody>
         </table>
       </div>
+
+      <Toast message={toast} />
     </>
   )
 }

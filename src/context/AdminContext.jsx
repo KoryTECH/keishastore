@@ -139,6 +139,13 @@ export function AdminProvider({ children }) {
     return { id }
   }, [productById, fetchOrders])
 
+  // Called by the admin Orders tab — mark orders paid/refunded etc.
+  const updateOrderStatus = useCallback(async (id, status) => {
+    const { error } = await supabase.from('orders').update({ status }).eq('id', id)
+    if (error) throw error
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)))
+  }, [])
+
   useEffect(() => {
     fetchProducts()
     fetchOrders()
@@ -172,6 +179,7 @@ export function AdminProvider({ children }) {
       loadingOrders,
       refreshOrders: fetchOrders,
       addOrder,
+      updateOrderStatus,
       stats,
     }),
     [
@@ -186,6 +194,7 @@ export function AdminProvider({ children }) {
       loadingOrders,
       fetchOrders,
       addOrder,
+      updateOrderStatus,
       stats,
     ],
   )

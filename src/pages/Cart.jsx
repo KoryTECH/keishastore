@@ -128,7 +128,7 @@ export default function Cart() {
 
                 <div className="sum-note">
                   <ShieldCheck size={16} />
-                  <span>Secure encrypted checkout — payment providers are wired up in the next phase.</span>
+                  <span>Your order saves to the store instantly — payment instructions arrive by email after you check out.</span>
                 </div>
               </aside>
             </div>
