@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import BookCover from '../components/BookCover.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import Toast from '../components/Toast.jsx'
 import { money, getTypeLabel } from '../data/products.js'
 
@@ -16,6 +17,8 @@ export default function Checkout() {
 
   const [form, setForm] = useState({ name: '', email: '' })
   const [placed, setPlaced] = useState(null) // { ref, total, email } after success
+  const [confirming, setConfirming] = useState(false) // confirm dialog before saving
+  const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -95,10 +98,17 @@ export default function Checkout() {
   // ---- Checkout form ----
   const canPay = form.name.trim() && /.+@.+\..+/.test(form.email)
 
-  const placeOrder = async (e) => {
+  // Step 1 of submitting: the form passes validation → open the confirm dialog
+  const placeOrder = (e) => {
     e.preventDefault()
     if (!canPay) return
+    setConfirming(true)
+  }
+
+  // Step 2: user confirmed in the dialog → actually save the order
+  const confirmPlaceOrder = async () => {
     const ref = `KS-${Date.now().toString().slice(-6)}`
+    setBusy(true)
     try {
       await addOrder({
         id: ref,
@@ -109,9 +119,12 @@ export default function Checkout() {
         status: 'pending',
       })
       setPlaced({ ref, total: subtotal, email: form.email.trim(), name: form.name.trim() })
+      setConfirming(false)
       clear()
     } catch (err) {
       showToast(`Order could not be saved — ${err.message}`)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -234,6 +247,23 @@ export default function Checkout() {
           </form>
         </div>
       </section>
+
+      <ConfirmModal
+        open={confirming}
+        title="Place this order?"
+        message="Nothing is charged right now — you'll receive payment instructions by email, and your downloads unlock once payment is confirmed."
+        confirmLabel="Yes, place my order"
+        busy={busy}
+        onCancel={() => setConfirming(false)}
+        onConfirm={confirmPlaceOrder}
+      >
+        <div className="modal-rows">
+          <div className="modal-row"><span>Order for</span><b>{form.name.trim()}</b></div>
+          <div className="modal-row"><span>Items</span><b>{lines.reduce((s, l) => s + l.qty, 0)} · {lines.length} title{lines.length === 1 ? '' : 's'}</b></div>
+          <div className="modal-row"><span>Total</span><b>{money(subtotal)}</b></div>
+          <div className="modal-row"><span>Email</span><b>{form.email.trim()}</b></div>
+        </div>
+      </ConfirmModal>
 
       <Toast message={toast} />
     </>

@@ -19,6 +19,7 @@ const toApp = (row) => ({
   hours: row.hours == null ? null : Number(row.hours),
   gradient: row.gradient ?? 0,
   description: row.description ?? '',
+  filePath: row.file_path ?? '',
 })
 
 const toDb = (p) => ({
@@ -80,6 +81,28 @@ export function AdminProvider({ children }) {
     const { error } = await supabase.from('products').delete().eq('id', id)
     if (error) throw error
     setProducts((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  // Uploads a deliverable (PDF/e-book/course file) to the private
+  // `product-files` bucket and points the product at it. Replaces
+  // any previous file (upsert: true). Admin-only via storage RLS.
+  const uploadProductFile = useCallback(async (productId, file) => {
+    const path = `${productId}/${file.name}`
+    const { error } = await supabase.storage
+      .from('product-files')
+      .upload(path, file, { upsert: true })
+    if (error) throw error
+
+    const { data, error: updateError } = await supabase
+      .from('products')
+      .update({ file_path: path })
+      .eq('id', productId)
+      .select('*')
+      .single()
+    if (updateError) throw updateError
+
+    setProducts((prev) => prev.map((p) => (p.id === productId ? toApp(data) : p)))
+    return toApp(data)
   }, [])
 
   const productById = useCallback(
@@ -174,6 +197,7 @@ export function AdminProvider({ children }) {
       productById,
       addProduct,
       deleteProduct,
+      uploadProductFile,
       refreshProducts: fetchProducts,
       orders,
       loadingOrders,
@@ -189,6 +213,7 @@ export function AdminProvider({ children }) {
       productById,
       addProduct,
       deleteProduct,
+      uploadProductFile,
       fetchProducts,
       orders,
       loadingOrders,

@@ -66,13 +66,9 @@ export default function Navbar() {
             {count > 0 && <span className="cart-count">{count}</span>}
           </Link>
           {user ? (
-            <button
-              className="nav-auth-link"
-              onClick={handleSignOut}
-              title="Sign out"
-            >
-              Sign Out
-            </button>
+            <Link to="/account" className="nav-auth-link" title="Your downloads and orders">
+              My Shelf
+            </Link>
           ) : (
             <Link to="/login" className="nav-auth-link">
               Sign In
@@ -100,8 +96,14 @@ export default function Navbar() {
             </Link>
           ))}
           {user && (
-            <button className="nav-link" onClick={handleSignOut}>
+            <Link to="/account" className="nav-link">
               <span className="nav-link-n">05</span>
+              My Shelf
+            </Link>
+          )}
+          {user && (
+            <button className="nav-link" onClick={handleSignOut}>
+              <span className="nav-link-n">06</span>
               Sign Out
             </button>
           )}

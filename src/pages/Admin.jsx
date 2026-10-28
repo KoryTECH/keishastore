@@ -13,10 +13,12 @@ import {
   DollarSign,
   ClipboardList,
   ShieldCheck,
+  FileUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
 import Toast from '../components/Toast.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import { money, getTypeLabel, CATEGORIES, COVER_GRADIENTS } from '../data/products.js'
 
 const TABS = [
@@ -210,9 +212,14 @@ function StatusPill({ status }) {
 
 /* ================= PRODUCTS ================= */
 function ProductsTab() {
-  const { products, orders, loadingProducts, addProduct, deleteProduct } = useAdmin()
+  const { products, orders, loadingProducts, addProduct, deleteProduct, uploadProductFile } = useAdmin()
   const [toast, setToast] = useState('')
   const [showForm, setShowForm] = useState(false)
+  // Confirmation dialogs: pendingAdd holds { product, file } until
+  // confirmed; pendingDelete holds the product the trash icon hit.
+  const [pendingAdd, setPendingAdd] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   const showToast = (msg) => {
     setToast(msg)
@@ -226,12 +233,33 @@ function ProductsTab() {
       0,
     )
 
-  const remove = async (p) => {
+  const confirmAdd = async () => {
+    const { product, file } = pendingAdd
+    setBusy(true)
+    try {
+      const saved = await addProduct(product)
+      if (file) await uploadProductFile(saved.id, file)
+      showToast(`"${saved.title}" is live on the shelf`)
+      setPendingAdd(null)
+      setShowForm(false)
+    } catch (err) {
+      showToast(`Could not add product — ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    const p = pendingDelete
+    setBusy(true)
     try {
       await deleteProduct(p.id)
       showToast(`"${p.title}" removed from the shelf`)
+      setPendingDelete(null)
     } catch (err) {
       showToast(`Could not remove "${p.title}" — ${err.message}`)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -250,15 +278,7 @@ function ProductsTab() {
       {showForm && (
         <div className="table-card card-pad fade-up" style={{ marginBottom: 26 }}>
           <AddProductForm
-            onSaved={async (p) => {
-              try {
-                await addProduct(p)
-                showToast(`"${p.title}" is live on the shelf`)
-                setShowForm(false)
-              } catch (err) {
-                showToast(`Could not add product — ${err.message}`)
-              }
-            }}
+            onSaved={(product, file) => setPendingAdd({ product, file })}
           />
         </div>
       )}
@@ -275,6 +295,7 @@ function ProductsTab() {
               <th>Type</th>
               <th>Category</th>
               <th>Price</th>
+              <th>File</th>
               <th>Units Sold</th>
               <th></th>
             </tr>
@@ -282,13 +303,13 @@ function ProductsTab() {
           <tbody>
             {loadingProducts ? (
               <tr>
-                <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                <td colSpan="7" className="muted" style={{ textAlign: 'center', padding: 30 }}>
                   Loading products from the database…
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                <td colSpan="7" className="muted" style={{ textAlign: 'center', padding: 30 }}>
                   The shelf is empty — add your first product above.
                 </td>
               </tr>
@@ -307,12 +328,21 @@ function ProductsTab() {
                   </td>
                   <td>{p.category}</td>
                   <td><b>{money(p.price)}</b></td>
+                  <td>
+                    {p.filePath ? (
+                      <span className="file-tag">
+                        <FileUp size={12} /> Ready
+                      </span>
+                    ) : (
+                      <span className="muted small">Not uploaded</span>
+                    )}
+                  </td>
                   <td>{salesFor(p.id)}</td>
                   <td style={{ textAlign: 'right' }}>
                     <button
                       className="icon-btn"
                       aria-label={`Delete ${p.title}`}
-                      onClick={() => remove(p)}
+                      onClick={() => setPendingDelete(p)}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -323,6 +353,45 @@ function ProductsTab() {
           </tbody>
         </table>
       </div>
+
+      {/* confirm: add product (optionally with its file) */}
+      <ConfirmModal
+        open={!!pendingAdd}
+        title="Add this product?"
+        message="It goes live on the public shelf immediately."
+        confirmLabel="Yes, add it"
+        busy={busy}
+        onCancel={() => setPendingAdd(null)}
+        onConfirm={confirmAdd}
+      >
+        {pendingAdd && (
+          <div className="modal-rows">
+            <div className="modal-row"><span>Title</span><b>{pendingAdd.product.title}</b></div>
+            <div className="modal-row"><span>Type</span><b>{getTypeLabel(pendingAdd.product.type)}</b></div>
+            <div className="modal-row"><span>Price</span><b>{money(pendingAdd.product.price)}</b></div>
+            <div className="modal-row"><span>File</span><b>{pendingAdd.file ? pendingAdd.file.name : 'None — add later'}</b></div>
+          </div>
+        )}
+      </ConfirmModal>
+
+      {/* confirm: delete product */}
+      <ConfirmModal
+        open={!!pendingDelete}
+        title="Remove this product?"
+        message="It disappears from the public shop right away. Past orders keep their history — customers of past orders lose download access to this file, so only delete if it is not selling."
+        confirmLabel="Yes, remove it"
+        danger
+        busy={busy}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        {pendingDelete && (
+          <div className="modal-rows">
+            <div className="modal-row"><span>Title</span><b>{pendingDelete.title}</b></div>
+            <div className="modal-row"><span>Price</span><b>{money(pendingDelete.price)}</b></div>
+          </div>
+        )}
+      </ConfirmModal>
 
       <Toast message={toast} />
     </>
@@ -341,6 +410,7 @@ function AddProductForm({ onSaved }) {
   })
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [file, setFile] = useState(null)
 
   const bind = (key) => ({
     value: f[key],
@@ -368,7 +438,7 @@ function AddProductForm({ onSaved }) {
         gradient: Math.floor(Math.random() * COVER_GRADIENTS.length),
         description: f.description.trim() || 'A fresh addition to the Keisha Store shelf. Full description coming soon.',
         ...(f.type === 'course' ? { lessons: 10, hours: 4 } : { pages: 100 }),
-      })
+      }, file)
     } finally {
       setSaving(false)
     }
@@ -415,6 +485,19 @@ function AddProductForm({ onSaved }) {
         <div className="field full">
           <label htmlFor="np-desc">Short description</label>
           <textarea id="np-desc" placeholder="What is this product and who is it for?" {...bind('description')} />
+        </div>
+        <div className="field full">
+          <label htmlFor="np-file">Product file — PDF, e-book, course materials (delivered after payment)</label>
+          <input
+            id="np-file"
+            type="file"
+            accept=".pdf,.epub,.mobi,.zip,.doc,.docx,.mp3,.mp4"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            style={{ padding: '10px 14px', fontSize: 13 }}
+          />
+          <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+            Optional — customers download it from My Shelf once their order is marked paid. You can skip it now and re-add the product later with a file.
+          </span>
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>

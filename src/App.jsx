@@ -11,6 +11,7 @@ import Shop from './pages/Shop.jsx'
 import ProductDetail from './pages/ProductDetail.jsx'
 import Cart from './pages/Cart.jsx'
 import Checkout from './pages/Checkout.jsx'
+import Account from './pages/Account.jsx'
 import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Admin from './pages/Admin.jsx'
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/product/:id" element={<Storefront><ProductDetail /></Storefront>} />
             <Route path="/cart" element={<Storefront><Cart /></Storefront>} />
             <Route path="/checkout" element={<Storefront><Checkout /></Storefront>} />
+            <Route path="/account" element={<Storefront><Account /></Storefront>} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/admin" element={<Admin />} />
