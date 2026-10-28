@@ -69,9 +69,6 @@ export default function Footer() {
 
         <div className="footer-bottom">
           <span>© 2026 Keisha Store. All rights reserved.</span>
-          <span>
-            Digital storefront <Link to="/admin" className="link-gold">Owner login</Link>
-          </span>
         </div>
       </div>
     </footer>
