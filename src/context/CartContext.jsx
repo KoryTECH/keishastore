@@ -2,11 +2,13 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 const CartContext = createContext(null)
 
+// Session storage: survives refreshes inside a tab, but nothing
+// persists on the device once the browser/tab is closed.
 const STORAGE_KEY = 'keisha.cart'
 
 function load() {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
     return raw ? JSON.parse(raw) : []
   } catch {
     return []
@@ -18,7 +20,7 @@ export function CartProvider({ children }) {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(items))
     } catch {
       /* storage unavailable */
     }
