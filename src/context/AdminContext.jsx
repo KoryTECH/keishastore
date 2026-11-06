@@ -53,6 +53,46 @@ export function AdminProvider({ children }) {
   const [orders, setOrders] = useState([])
   const [loadingOrders, setLoadingOrders] = useState(true)
 
+  // ---------- newsletter (admin-only reads, gated by RLS) ----------
+  const [subscribers, setSubscribers] = useState([])
+  const [loadingSubscribers, setLoadingSubscribers] = useState(true)
+  const [broadcasts, setBroadcasts] = useState([])
+  const [loadingBroadcasts, setLoadingBroadcasts] = useState(true)
+
+  const fetchSubscribers = useCallback(async () => {
+    setLoadingSubscribers(true)
+    const { data } = await supabase
+      .from('subscribers')
+      .select('id, email, created_at')
+      .order('created_at', { ascending: false })
+    setSubscribers(
+      (data ?? []).map((s) => ({ id: s.id, email: s.email, date: fmtDate(s.created_at) })),
+    )
+    setLoadingSubscribers(false)
+  }, [])
+
+  const fetchBroadcasts = useCallback(async () => {
+    setLoadingBroadcasts(true)
+    const { data } = await supabase
+      .from('broadcasts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setBroadcasts(data ?? [])
+    setLoadingBroadcasts(false)
+  }, [])
+
+  // Sends through the `send-broadcast` Edge Function — the Brevo
+  // key never leaves the server. Returns { total, sent, failed }.
+  const sendBroadcast = useCallback(async ({ subject, body, audience }) => {
+    const { data, error } = await supabase.functions.invoke('send-broadcast', {
+      body: { subject, body, audience },
+    })
+    if (error || data?.error) throw new Error(data?.error ?? error.message)
+    fetchBroadcasts().catch(() => {})
+    return data
+  }, [fetchBroadcasts])
+
   // ---------- catalog ----------
   const fetchProducts = useCallback(async () => {
     setLoadingProducts(true)
@@ -172,7 +212,9 @@ export function AdminProvider({ children }) {
   useEffect(() => {
     fetchProducts()
     fetchOrders()
-  }, [fetchProducts, fetchOrders])
+    fetchSubscribers().catch(() => {})
+    fetchBroadcasts().catch(() => {})
+  }, [fetchProducts, fetchOrders, fetchSubscribers, fetchBroadcasts])
 
   // ---------- stats ----------
   const stats = useCallback(() => {
@@ -205,6 +247,13 @@ export function AdminProvider({ children }) {
       addOrder,
       updateOrderStatus,
       stats,
+      subscribers,
+      loadingSubscribers,
+      refreshSubscribers: fetchSubscribers,
+      broadcasts,
+      loadingBroadcasts,
+      refreshBroadcasts: fetchBroadcasts,
+      sendBroadcast,
     }),
     [
       products,
@@ -221,6 +270,13 @@ export function AdminProvider({ children }) {
       addOrder,
       updateOrderStatus,
       stats,
+      subscribers,
+      loadingSubscribers,
+      fetchSubscribers,
+      broadcasts,
+      loadingBroadcasts,
+      fetchBroadcasts,
+      sendBroadcast,
     ],
   )
 

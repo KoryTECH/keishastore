@@ -1,7 +1,26 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LibraryBig, Facebook, Instagram, Twitter, Youtube } from 'lucide-react'
+import { subscribeToList } from '../lib/newsletter.js'
 
 export default function Footer() {
+  const [note, setNote] = useState('')
+
+  const handleSubscribe = async (e) => {
+    e.preventDefault()
+    const input = e.target.elements.email
+    const result = await subscribeToList(input.value)
+    if (result.status === 'subscribed') {
+      setNote('Welcome to the reading community 🎉')
+      e.target.reset()
+    } else if (result.status === 'exists') {
+      setNote('You are already on the list.')
+      e.target.reset()
+    } else {
+      setNote(result.message)
+    }
+  }
+
   return (
     <footer className="footer">
       <div className="container">
@@ -54,10 +73,13 @@ export default function Footer() {
           <div className="footer-news">
             <h5>Newsletter</h5>
             <p>Join the mailing list for new releases and subscriber-only deals.</p>
-            <form className="footer-form" onSubmit={(e) => e.preventDefault()}>
-              <input type="email" placeholder="Enter your email" />
+            <form className="footer-form" onSubmit={handleSubscribe}>
+              <input name="email" type="email" placeholder="Enter your email" required />
               <button type="submit">Subscribe</button>
             </form>
+            {note && (
+              <p style={{ margin: '8px 0 0', fontSize: 12, color: '#9DB4A3' }}>{note}</p>
+            )}
             <div className="payments" aria-label="Accepted payment methods">
               <span className="pay-pill">VISA</span>
               <span className="pay-pill">MASTERCARD</span>

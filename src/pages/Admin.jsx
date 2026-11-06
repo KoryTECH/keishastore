@@ -14,6 +14,7 @@ import {
   ClipboardList,
   ShieldCheck,
   FileUp,
+  Send,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'orders', label: 'Orders', icon: ShoppingCart },
+  { id: 'newsletter', label: 'Newsletter', icon: Send },
 ]
 
 export default function Admin() {
@@ -97,6 +99,7 @@ function AdminPanel() {
         {tab === 'dashboard' && <Dashboard setTab={setTab} />}
         {tab === 'products' && <ProductsTab />}
         {tab === 'orders' && <OrdersTab />}
+        {tab === 'newsletter' && <NewsletterTab />}
       </main>
     </div>
   )
@@ -208,6 +211,258 @@ function Dashboard({ setTab }) {
 
 function StatusPill({ status }) {
   return <span className={`status-pill status-${status}`}>{status}</span>
+}
+
+/* ================= NEWSLETTER ================= */
+function NewsletterTab() {
+  const {
+    subscribers,
+    loadingSubscribers,
+    refreshSubscribers,
+    broadcasts,
+    loadingBroadcasts,
+    orders,
+    sendBroadcast,
+  } = useAdmin()
+  const [audience, setAudience] = useState('subscribers')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    window.clearTimeout(showToast._t)
+    showToast._t = window.setTimeout(() => setToast(''), 4200)
+  }
+
+  // audience size preview (deduped: a customer who subscribed counts once)
+  const subscriberEmails = subscribers.map((s) => s.email)
+  const everyoneEmails = [...new Set([...subscriberEmails, ...orders.map((o) => o.email)])]
+  const recipientCount = audience === 'subscribers' ? subscriberEmails.length : everyoneEmails.length
+
+  const canSend = subject.trim() && body.trim() && recipientCount > 0
+
+  const doSend = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      const result = await sendBroadcast({ subject: subject.trim(), body: body.trim(), audience })
+      showToast(
+        result.failed > 0
+          ? `Sent to ${result.sent} of ${result.total} — ${result.failed} failed (Brevo daily limit?)`
+          : `Delivered to all ${result.sent} ${recipientCount === 1 ? 'person' : 'people'} 🎉`,
+      )
+      if (result.failed === 0) {
+        setSubject('')
+        setBody('')
+      }
+      setConfirming(false)
+    } catch (e) {
+      setErr(e.message)
+      setConfirming(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const AUDIENCES = [
+    {
+      id: 'subscribers',
+      label: 'Subscribers only',
+      desc: 'Everyone who gave us their email on the storefront',
+      count: subscriberEmails.length,
+    },
+    {
+      id: 'everyone',
+      label: 'Subscribers + past customers',
+      desc: 'Adds everyone who has ever placed an order',
+      count: everyoneEmails.length,
+    },
+  ]
+
+  return (
+    <>
+      <div className="admin-head">
+        <div>
+          <h1>Newsletter</h1>
+          <span className="muted">
+            One source, many inboxes — write it once, send it to the whole list.
+          </span>
+        </div>
+        <button className="btn btn-outline btn-sm" onClick={() => refreshSubscribers()}>
+          Refresh list
+        </button>
+      </div>
+
+      {/* ----- composer ----- */}
+      <div className="table-card card-pad" style={{ marginBottom: 26 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, margin: '0 0 18px' }}>
+          Send a broadcast
+        </h3>
+
+        {err && <div className="login-error" style={{ textAlign: 'left', marginBottom: 16 }}>{err}</div>}
+
+        <label style={{ display: 'block', fontWeight: 700, fontSize: 12.5, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+          Who is this going to?
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {AUDIENCES.map((a) => (
+            <label
+              key={a.id}
+              className="pay-option"
+              style={{
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start',
+                cursor: 'pointer',
+                padding: '14px 16px',
+                borderRadius: 10,
+                border: audience === a.id ? '1.5px solid var(--gold)' : '1.5px solid var(--line-soft)',
+                background: audience === a.id ? 'rgba(201, 162, 75, 0.08)' : 'transparent',
+              }}
+            >
+              <input
+                type="radio"
+                name="broadcast-audience"
+                checked={audience === a.id}
+                onChange={() => setAudience(a.id)}
+                style={{ marginTop: 3, accentColor: '#0D2118' }}
+              />
+              <span>
+                <b style={{ fontSize: 13.5 }}>{a.label}</b>
+                <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+                  {a.desc}
+                </span>
+                <span style={{ display: 'inline-block', marginTop: 8, fontSize: 11, fontWeight: 700, background: 'rgba(201,162,75,0.16)', color: 'var(--gold-deep)', borderRadius: 999, padding: '2px 10px' }}>
+                  {a.count} {a.count === 1 ? 'person' : 'people'}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="form-grid">
+          <div className="field full">
+            <label htmlFor="nl-subject">Subject line</label>
+            <input
+              id="nl-subject"
+              placeholder="e.g. New arrivals this week 📚"
+              maxLength={150}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
+          </div>
+          <div className="field full">
+            <label htmlFor="nl-body">Message</label>
+            <textarea
+              id="nl-body"
+              rows={6}
+              maxLength={5000}
+              placeholder="Write your update — new titles, prices, free picks…"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <span className="muted" style={{ fontSize: 11.5, marginTop: 6, display: 'block' }}>
+              Plain text is fine — Keisha&apos;s branded email wrapper is applied automatically.
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 14, marginTop: 18 }}>
+          <span className="muted small">{recipientCount} recipient{recipientCount === 1 ? '' : 's'} · Brevo free tier ≈ 300 emails/day</span>
+          <button className="btn btn-primary" disabled={!canSend} onClick={() => setConfirming(true)}>
+            <Send size={14} /> Send Broadcast
+          </button>
+        </div>
+      </div>
+
+      {/* ----- subscribers ----- */}
+      <div className="table-card" style={{ marginBottom: 26 }}>
+        <div className="table-head">
+          <h3>Subscriber List</h3>
+          <span className="muted small">Only you can see these emails — RLS keeps them private</span>
+        </div>
+        <table className="nice">
+          <thead>
+            <tr><th>Email</th><th>Joined</th></tr>
+          </thead>
+          <tbody>
+            {loadingSubscribers ? (
+              <tr><td colSpan="2" className="muted" style={{ textAlign: 'center', padding: 26 }}>Loading subscribers…</td></tr>
+            ) : subscribers.length === 0 ? (
+              <tr><td colSpan="2" className="muted" style={{ textAlign: 'center', padding: 26 }}>
+                Nobody has subscribed yet — the first join lands through the footer or homepage form.
+              </td></tr>
+            ) : (
+              subscribers.slice(0, 12).map((s) => (
+                <tr key={s.id}>
+                  <td><b>{s.email}</b></td>
+                  <td className="muted">{s.date}</td>
+                </tr>
+              ))
+            )}
+            {subscribers.length > 12 && (
+              <tr><td colSpan="2" className="muted" style={{ padding: '10px 16px' }}>+ {subscribers.length - 12} more on the list</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ----- sent log ----- */}
+      <div className="table-card">
+        <div className="table-head">
+          <h3>Sent History</h3>
+          <span className="muted small">Latest 20 broadcasts</span>
+        </div>
+        <table className="nice">
+          <thead>
+            <tr><th>Subject</th><th>Audience</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Date</th></tr>
+          </thead>
+          <tbody>
+            {loadingBroadcasts ? (
+              <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 26 }}>Loading history…</td></tr>
+            ) : broadcasts.length === 0 ? (
+              <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 26 }}>
+                Nothing sent yet — your first broadcast will appear here.
+              </td></tr>
+            ) : (
+              broadcasts.map((b) => (
+                <tr key={b.id}>
+                  <td><b>{b.subject}</b></td>
+                  <td>{b.audience === 'everyone' ? 'Everyone' : 'Subscribers'}</td>
+                  <td>{b.recipient_count}</td>
+                  <td style={{ color: '#2E7D50', fontWeight: 700 }}>{b.sent_count}</td>
+                  <td style={{ color: b.failed_count > 0 ? '#C0554C' : 'var(--muted)' }}>{b.failed_count}</td>
+                  <td className="muted">{new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <ConfirmModal
+        open={confirming}
+        title="Send this broadcast?"
+        message={`${recipientCount} ${recipientCount === 1 ? 'person' : 'people'} will receive "${subject.trim()}" in their inbox. Email can't be unsent.`}
+        confirmLabel={`Yes, send to ${recipientCount}`}
+        busy={busy}
+        onCancel={() => setConfirming(false)}
+        onConfirm={doSend}
+      >
+        <div className="modal-rows">
+          <div className="modal-row"><span>Audience</span><b>{audience === 'everyone' ? 'Subscribers + customers' : 'Subscribers'}</b></div>
+          <div className="modal-row"><span>Recipients</span><b>{recipientCount}</b></div>
+          <div className="modal-row"><span>Subject</span><b>{subject.trim()}</b></div>
+        </div>
+      </ConfirmModal>
+
+      <Toast message={toast} />
+    </>
+  )
 }
 
 /* ================= PRODUCTS ================= */

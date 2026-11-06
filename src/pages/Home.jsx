@@ -15,6 +15,7 @@ import { useAdmin } from '../context/AdminContext.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import BookCover from '../components/BookCover.jsx'
 import Toast from '../components/Toast.jsx'
+import { subscribeToList } from '../lib/newsletter.js'
 import { CATEGORIES } from '../data/products.js'
 
 const CAT_ICONS = {
@@ -236,13 +237,22 @@ export default function Home() {
               </p>
               <form
                 className="newsletter-form"
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault()
-                  showToast('Subscribed — welcome to the community')
-                  e.target.reset()
+                  const input = e.target.elements.email
+                  const result = await subscribeToList(input.value)
+                  if (result.status === 'subscribed') {
+                    showToast('Subscribed — welcome to the community 🎉')
+                    e.target.reset()
+                  } else if (result.status === 'exists') {
+                    showToast('You are already on the list — see you in the next letter')
+                    e.target.reset()
+                  } else {
+                    showToast(`Could not subscribe — ${result.message}`)
+                  }
                 }}
               >
-                <input type="email" required placeholder="Enter your email" />
+                <input name="email" type="email" required placeholder="Enter your email" />
                 <button className="btn btn-gold" type="submit">Subscribe</button>
               </form>
               <p className="newsletter-note">No spam, unsubscribe anytime.</p>
