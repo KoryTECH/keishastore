@@ -746,10 +746,13 @@ function AddProductForm({ onSaved }) {
           <input
             id="np-file"
             type="file"
-            accept=".pdf,.epub,.mobi,.zip,.doc,.docx,.mp3,.mp4"
+            accept="application/pdf,application/epub+zip,application/zip,application/x-zip-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,audio/mpeg,video/mp4"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             style={{ padding: '10px 14px', fontSize: 13 }}
           />
+          <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+            PDF, e-book, ZIP, DOC, MP3, MP4. On a phone, the file lives in your Files/Documents app (WhatsApp → open the PDF → ⋮ → Save/Export) — the picker will now show it.
+          </span>
           <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
             Optional — customers download it from My Shelf once their order is marked paid. You can skip it now and re-add the product later with a file.
           </span>

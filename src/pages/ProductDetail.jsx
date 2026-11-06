@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Check, ArrowRight, ShoppingBag, Zap } from 'lucide-react'
+import { Check, ArrowRight, ShoppingBag, Zap, Download, Loader2 } from 'lucide-react'
 import { useAdmin } from '../context/AdminContext.jsx'
 import { useCart } from '../context/CartContext.jsx'
+import { supabase } from '../lib/supabase.js'
 import BookCover from '../components/BookCover.jsx'
 import Stars from '../components/Stars.jsx'
 import ProductCard from '../components/ProductCard.jsx'
@@ -15,8 +16,30 @@ export default function ProductDetail() {
   const { productById, products } = useAdmin()
   const { add } = useCart()
   const [toast, setToast] = useState('')
+  const [dlBusy, setDlBusy] = useState(false)
 
   const product = productById(id)
+
+  // Free products (price 0) download directly — no cart, no login,
+  // no order. The storage policy in 09_free_product_files.sql
+  // lets anyone read files whose product costs $0.
+  const isFree = product?.price === 0
+
+  const downloadFree = async () => {
+    if (!product?.filePath || dlBusy) return
+    setDlBusy(true)
+    try {
+      const { data, error } = await supabase.storage
+        .from('product-files')
+        .createSignedUrl(product.filePath, 300)
+      if (error) throw error
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      showToast(`Download failed — ${err.message}`)
+    } finally {
+      setDlBusy(false)
+    }
+  }
 
   if (!product) {
     return (
@@ -88,30 +111,49 @@ export default function ProductDetail() {
               <p className="detail-desc">{product.description}</p>
 
               <div className="detail-price">
-                <span className="now">{money(product.price)}</span>
+                <span className="now">{isFree ? 'Free' : money(product.price)}</span>
                 {onSale && <span className="was">{money(product.oldPrice)}</span>}
                 {onSale && <span className="save">Save {percent}%</span>}
               </div>
 
               <div className="detail-ctas">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    add(product.id)
-                    showToast(`${product.title} added to cart`)
-                  }}
-                >
-                  <ShoppingBag size={15} /> Add to Cart
-                </button>
-                <button
-                  className="btn btn-gold"
-                  onClick={() => {
-                    add(product.id)
-                    navigate('/checkout')
-                  }}
-                >
-                  <Zap size={15} /> Buy It Now
-                </button>
+                {isFree ? (
+                  product.filePath ? (
+                    <button className="btn btn-gold" onClick={downloadFree} disabled={dlBusy}>
+                      {dlBusy ? (
+                        <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <Download size={15} />
+                      )}
+                      Download Free Copy
+                    </button>
+                  ) : (
+                    <span className="muted small" style={{ padding: '8px 0' }}>
+                      Free copy — the file is being prepared. Check back shortly.
+                    </span>
+                  )
+                ) : (
+                  <>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        add(product.id)
+                        showToast(`${product.title} added to cart`)
+                      }}
+                    >
+                      <ShoppingBag size={15} /> Add to Cart
+                    </button>
+                    <button
+                      className="btn btn-gold"
+                      onClick={() => {
+                        add(product.id)
+                        navigate('/checkout')
+                      }}
+                    >
+                      <Zap size={15} /> Buy It Now
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="includes">

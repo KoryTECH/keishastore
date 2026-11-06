@@ -7,6 +7,7 @@ import { money, getTypeLabel } from '../data/products.js'
 export default function ProductCard({ product, onAdded }) {
   const onSale = product.oldPrice != null && product.oldPrice > product.price
   const percent = onSale ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100) : 0
+  const isFree = product.price === 0
 
   return (
     <article className="product-card">
@@ -37,18 +38,28 @@ export default function ProductCard({ product, onAdded }) {
 
         <div className="pc-foot">
           <span className="pc-price">
-            <span className={`now ${onSale ? 'gold' : ''}`}>{money(product.price)}</span>
+            <span className={`now ${onSale ? 'gold' : ''}`}>{isFree ? 'Free' : money(product.price)}</span>
             {onSale && <span className="was">{money(product.oldPrice)}</span>}
           </span>
-          <button
-            className="btn-text"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAdded()
-            }}
-          >
-            Add to Cart <ArrowRight size={13} />
-          </button>
+          {isFree ? (
+            <Link
+              to={`/product/${product.id}`}
+              className="btn-text"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Get Free Copy <ArrowRight size={13} />
+            </Link>
+          ) : (
+            <button
+              className="btn-text"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAdded()
+              }}
+            >
+              Add to Cart <ArrowRight size={13} />
+            </button>
+          )}
         </div>
       </div>
     </article>
