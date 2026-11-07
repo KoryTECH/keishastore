@@ -675,8 +675,10 @@ function AddProductForm({ onSaved }) {
   const submit = async (e) => {
     e.preventDefault()
     const price = Number(f.price)
-    if (!f.title.trim() || !f.author.trim() || !price || price <= 0) {
-      setErr('Give the product a title, an author and a valid price.')
+    // $0 is VALID now — it means "free product". Only negative
+    // or missing/NaN prices are rejected.
+    if (!f.title.trim() || !f.author.trim() || Number.isNaN(price) || price < 0) {
+      setErr('Give the product a title, an author and a valid price (0 = free).')
       return
     }
     setSaving(true)
