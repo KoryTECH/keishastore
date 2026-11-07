@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   FileUp,
   Send,
+  MessageSquare,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'orders', label: 'Orders', icon: ShoppingCart },
+  { id: 'reviews', label: 'Reviews', icon: MessageSquare },
   { id: 'newsletter', label: 'Newsletter', icon: Send },
 ]
 
@@ -99,6 +101,7 @@ function AdminPanel() {
         {tab === 'dashboard' && <Dashboard setTab={setTab} />}
         {tab === 'products' && <ProductsTab />}
         {tab === 'orders' && <OrdersTab />}
+        {tab === 'reviews' && <ReviewsTab />}
         {tab === 'newsletter' && <NewsletterTab />}
       </main>
     </div>
@@ -459,6 +462,180 @@ function NewsletterTab() {
           <div className="modal-row"><span>Subject</span><b>{subject.trim()}</b></div>
         </div>
       </ConfirmModal>
+
+      <Toast message={toast} />
+    </>
+  )
+}
+
+/* ================= REVIEWS (moderation queue) ================= */
+function ReviewsTab() {
+  const {
+    reviews,
+    loadingReviews,
+    refreshReviews,
+    setReviewApproved,
+    deleteReview,
+    productById,
+  } = useAdmin()
+  const [toast, setToast] = useState('')
+  const [pendingDelete, setPendingDelete] = useState(null) // { id, name }
+  const [busy, setBusy] = useState(false)
+
+  const showToast = (msg) => {
+    setToast(msg)
+    window.clearTimeout(showToast._t)
+    showToast._t = window.setTimeout(() => setToast(''), 2600)
+  }
+
+  const pending = reviews.filter((r) => !r.approved)
+  const live = reviews.filter((r) => r.approved)
+
+  const act = async (fn, okMsg, failPre) => {
+    setBusy(true)
+    try {
+      await fn()
+      showToast(okMsg)
+      setPendingDelete(null)
+      return true
+    } catch (err) {
+      showToast(`${failPre} — ${err.message}`)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="admin-head">
+        <div>
+          <h1>Reviews</h1>
+          <span className="muted">
+            {pending.length} waiting for approval · {live.length} live on the shelf
+          </span>
+        </div>
+        <button className="btn btn-outline btn-sm" onClick={() => refreshReviews()}>
+          Refresh
+        </button>
+      </div>
+
+      <div className="table-card">
+        <div className="table-head">
+          <h3>All Reviews</h3>
+          <span className="muted small">Approving recomputes that product's stars automatically</span>
+        </div>
+        <table className="nice">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Reviewer</th>
+              <th>Rating</th>
+              <th>Review</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loadingReviews ? (
+              <tr>
+                <td colSpan="7" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  Loading reviews…
+                </td>
+              </tr>
+            ) : reviews.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  No reviews yet — they land here when readers write them.
+                </td>
+              </tr>
+            ) : (
+              reviews.map((r) => {
+                const p = productById(r.productId)
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <b>{p ? p.title : `Archived ${r.productId}`}</b>
+                      <br />
+                      <span className="muted small">{p ? p.author : ''}</span>
+                    </td>
+                    <td>{r.name}</td>
+                    <td>
+                      <Stars value={r.rating} />
+                    </td>
+                    <td style={{ maxWidth: 260 }}>
+                      <span style={{ fontSize: 13 }}>{r.body}</span>
+                    </td>
+                    <td>
+                      <span className={`chip ${r.approved ? 'chip-live' : 'chip-pending'}`}>
+                        {r.approved ? 'Live' : 'Pending'}
+                      </span>
+                    </td>
+                    <td className="muted">{r.date}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {r.approved ? (
+                        <button
+                          className="btn btn-outline btn-sm"
+                          disabled={busy}
+                          onClick={() =>
+                            act(
+                              () => setReviewApproved(r.id, false),
+                              `Review hidden — "${r.name}" is off the shelf again`,
+                              'Could not hide review',
+                            )
+                          }
+                        >
+                          Unpublish
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={busy}
+                          onClick={() =>
+                            act(
+                              () => setReviewApproved(r.id, true),
+                              `Published — "${r.name}" is now live`,
+                              'Could not approve review',
+                            )
+                          }
+                        >
+                          Approve
+                        </button>
+                      )}{' '}
+                      <button
+                        className="icon-btn"
+                        aria-label="Delete review"
+                        disabled={busy}
+                        onClick={() => setPendingDelete({ id: r.id, name: r.name })}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        title="Delete this review?"
+        message="This permanently removes the review and re-tallies the product's star rating."
+        confirmLabel="Yes, delete it"
+        danger
+        busy={busy}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() =>
+          act(
+            () => deleteReview(pendingDelete.id),
+            `Deleted "${pendingDelete.name}"'s review`,
+            'Could not delete review',
+          )
+        }
+      />
 
       <Toast message={toast} />
     </>

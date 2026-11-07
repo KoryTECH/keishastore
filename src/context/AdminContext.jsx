@@ -3,6 +3,10 @@ import { supabase } from '../lib/supabase.js'
 
 const AdminContext = createContext(null)
 
+// Round the averaged star rating to one decimal, same as the
+// numeric(2,1) column in the database.
+const round1 = (n) => Math.round(Number(n) * 10) / 10
+
 // Postgres uses snake_case; the app uses camelCase.
 const toApp = (row) => ({
   id: row.id,
@@ -81,6 +85,75 @@ export function AdminProvider({ children }) {
     setBroadcasts(data ?? [])
     setLoadingBroadcasts(false)
   }, [])
+
+  // ---------- reviews (moderated queue — admins see all rows) ----------
+  const [reviews, setReviews] = useState([])
+  const [loadingReviews, setLoadingReviews] = useState(true)
+
+  const fetchReviews = useCallback(async () => {
+    setLoadingReviews(true)
+    const { data } = await supabase
+      .from('reviews')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setReviews(
+      (data ?? []).map((r) => ({
+        id: r.id,
+        productId: r.product_id,
+        name: r.name,
+        userId: r.user_id,
+        rating: Number(r.rating),
+        body: r.body,
+        approved: r.approved,
+        date: fmtDate(r.created_at),
+      })),
+    )
+    setLoadingReviews(false)
+  }, [])
+
+  // After approving/unapproving, refresh the product's rating +
+  // review count from its approved reviews so shelf stars stay true.
+  const recomputeProductStars = useCallback(async (productId) => {
+    const { data } = await supabase
+      .from('reviews')
+      .select('rating')
+      .eq('product_id', productId)
+      .eq('approved', true)
+    const list = data ?? []
+    const avg = list.length
+      ? round1(list.reduce((s, r) => s + Number(r.rating), 0) / list.length)
+      : 0
+    await supabase
+      .from('products')
+      .update({ rating: avg, reviews: list.length })
+      .eq('id', productId)
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, rating: avg, reviews: list.length } : p)),
+    )
+  }, [])
+
+  const setReviewApproved = useCallback(
+    async (id, approved) => {
+      const { error } = await supabase.from('reviews').update({ approved }).eq('id', id)
+      if (error) throw error
+      const row = (await supabase.from('reviews').select('product_id').eq('id', id).single()).data
+      setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, approved } : r)))
+      if (row?.product_id) await recomputeProductStars(row.product_id)
+    },
+    [recomputeProductStars],
+  )
+
+  const deleteReview = useCallback(async (id) => {
+    const { data, error } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('id', id)
+      .select('product_id')
+      .single()
+    if (error) throw error
+    setReviews((prev) => prev.filter((r) => r.id !== id))
+    if (data?.product_id) await recomputeProductStars(data.product_id)
+  }, [recomputeProductStars])
 
   // Sends through the `send-broadcast` Edge Function — the Brevo
   // key never leaves the server. Returns { total, sent, failed }.
@@ -214,7 +287,8 @@ export function AdminProvider({ children }) {
     fetchOrders()
     fetchSubscribers().catch(() => {})
     fetchBroadcasts().catch(() => {})
-  }, [fetchProducts, fetchOrders, fetchSubscribers, fetchBroadcasts])
+    fetchReviews().catch(() => {})
+  }, [fetchProducts, fetchOrders, fetchSubscribers, fetchBroadcasts, fetchReviews])
 
   // ---------- stats ----------
   const stats = useCallback(() => {
@@ -254,6 +328,11 @@ export function AdminProvider({ children }) {
       loadingBroadcasts,
       refreshBroadcasts: fetchBroadcasts,
       sendBroadcast,
+      reviews,
+      loadingReviews,
+      refreshReviews: fetchReviews,
+      setReviewApproved,
+      deleteReview,
     }),
     [
       products,
@@ -277,6 +356,11 @@ export function AdminProvider({ children }) {
       loadingBroadcasts,
       fetchBroadcasts,
       sendBroadcast,
+      reviews,
+      loadingReviews,
+      fetchReviews,
+      setReviewApproved,
+      deleteReview,
     ],
   )
 
