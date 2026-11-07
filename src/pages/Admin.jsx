@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   LibraryBig,
@@ -226,6 +226,7 @@ function NewsletterTab() {
     loadingBroadcasts,
     orders,
     sendBroadcast,
+    fetchAudienceCounts,
   } = useAdmin()
   const [audience, setAudience] = useState('subscribers')
   const [subject, setSubject] = useState('')
@@ -234,6 +235,7 @@ function NewsletterTab() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
+  const [liveCounts, setLiveCounts] = useState(null) // { subscribers, everyone } from the server
 
   const showToast = (msg) => {
     setToast(msg)
@@ -241,10 +243,26 @@ function NewsletterTab() {
     showToast._t = window.setTimeout(() => setToast(''), 4200)
   }
 
-  // audience size preview (deduped: a customer who subscribed counts once)
+  // client-side estimate (server counts add signup accounts, which
+  // the browser can't see) — used as fallback/preload value
   const subscriberEmails = subscribers.map((s) => s.email)
-  const everyoneEmails = [...new Set([...subscriberEmails, ...orders.map((o) => o.email)])]
-  const recipientCount = audience === 'subscribers' ? subscriberEmails.length : everyoneEmails.length
+  const clientEveryone = [...new Set([...subscriberEmails, ...orders.map((o) => o.email)])]
+
+  useEffect(() => {
+    let alive = true
+    fetchAudienceCounts()
+      .then((c) => alive && setLiveCounts(c))
+      .catch(() => alive && setLiveCounts(null))
+    return () => {
+      alive = false
+    }
+  }, [fetchAudienceCounts])
+
+  const audienceSizes = {
+    subscribers: liveCounts?.subscribers ?? subscriberEmails.length,
+    everyone: liveCounts?.everyone ?? clientEveryone.length,
+  }
+  const recipientCount = audienceSizes[audience]
 
   const canSend = subject.trim() && body.trim() && recipientCount > 0
 
@@ -276,13 +294,13 @@ function NewsletterTab() {
       id: 'subscribers',
       label: 'Subscribers only',
       desc: 'Everyone who gave us their email on the storefront',
-      count: subscriberEmails.length,
+      count: audienceSizes.subscribers,
     },
     {
       id: 'everyone',
-      label: 'Subscribers + past customers',
-      desc: 'Adds everyone who has ever placed an order',
-      count: everyoneEmails.length,
+      label: 'Everyone — subscribers, customers & signups',
+      desc: 'One deduped list: newsletter form, past orders and every signup account',
+      count: audienceSizes.everyone,
     },
   ]
 
@@ -457,7 +475,7 @@ function NewsletterTab() {
         onConfirm={doSend}
       >
         <div className="modal-rows">
-          <div className="modal-row"><span>Audience</span><b>{audience === 'everyone' ? 'Subscribers + customers' : 'Subscribers'}</b></div>
+          <div className="modal-row"><span>Audience</span><b>{audience === 'everyone' ? 'Everyone (subscribers, customers & signups)' : 'Subscribers'}</b></div>
           <div className="modal-row"><span>Recipients</span><b>{recipientCount}</b></div>
           <div className="modal-row"><span>Subject</span><b>{subject.trim()}</b></div>
         </div>
@@ -644,11 +662,12 @@ function ReviewsTab() {
 
 /* ================= PRODUCTS ================= */
 function ProductsTab() {
-  const { products, orders, loadingProducts, addProduct, deleteProduct, uploadProductFile } = useAdmin()
+  const { products, orders, loadingProducts, addProduct, deleteProduct, uploadProductFile, uploadProductImage, sendBroadcast } = useAdmin()
   const [toast, setToast] = useState('')
   const [showForm, setShowForm] = useState(false)
-  // Confirmation dialogs: pendingAdd holds { product, file } until
-  // confirmed; pendingDelete holds the product the trash icon hit.
+  // Confirmation dialogs: pendingAdd holds { product, file, image,
+  // notify } until confirmed; pendingDelete holds the product the
+  // trash icon hit.
   const [pendingAdd, setPendingAdd] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -656,7 +675,7 @@ function ProductsTab() {
   const showToast = (msg) => {
     setToast(msg)
     window.clearTimeout(showToast._t)
-    showToast._t = window.setTimeout(() => setToast(''), 2600)
+    showToast._t = window.setTimeout(() => setToast(''), 3000)
   }
 
   const salesFor = (id) =>
@@ -666,12 +685,30 @@ function ProductsTab() {
     )
 
   const confirmAdd = async () => {
-    const { product, file } = pendingAdd
+    const { product, file, image, notify } = pendingAdd
     setBusy(true)
     try {
       const saved = await addProduct(product)
+      if (image) await uploadProductImage(saved.id, image)
       if (file) await uploadProductFile(saved.id, file)
-      showToast(`"${saved.title}" is live on the shelf`)
+
+      // paid product + "announce" picked → tell the whole list
+      let announceNote = ''
+      if (notify) {
+        try {
+          const result = await sendBroadcast({
+            subject: `New arrival: ${saved.title}`,
+            body: `Fresh on the Keisha Store shelf:\n\n${saved.title} by ${saved.author} — ${money(saved.price)}\n\n${saved.description}\n\nSee it here: ${window.location.origin}/product/${saved.id}\n\nHappy reading,\nKeisha`,
+            audience: 'everyone',
+          })
+          announceNote = ` · announcement sent to ${result.sent}`
+        } catch (annErr) {
+          announceNote = ' (product is live, but the announcement failed)'
+          console.error(annErr)
+        }
+      }
+
+      showToast(`"${saved.title}" is live on the shelf${announceNote}`)
       setPendingAdd(null)
       setShowForm(false)
     } catch (err) {
@@ -710,7 +747,7 @@ function ProductsTab() {
       {showForm && (
         <div className="table-card card-pad fade-up" style={{ marginBottom: 26 }}>
           <AddProductForm
-            onSaved={(product, file) => setPendingAdd({ product, file })}
+            onSaved={(product, file, image) => setPendingAdd({ product, file, image, notify: product.price > 0 })}
           />
         </div>
       )}
@@ -786,7 +823,7 @@ function ProductsTab() {
         </table>
       </div>
 
-      {/* confirm: add product (optionally with its file) */}
+      {/* confirm: add product (optionally with its file + cover) */}
       <ConfirmModal
         open={!!pendingAdd}
         title="Add this product?"
@@ -800,8 +837,24 @@ function ProductsTab() {
           <div className="modal-rows">
             <div className="modal-row"><span>Title</span><b>{pendingAdd.product.title}</b></div>
             <div className="modal-row"><span>Type</span><b>{getTypeLabel(pendingAdd.product.type)}</b></div>
-            <div className="modal-row"><span>Price</span><b>{money(pendingAdd.product.price)}</b></div>
+            <div className="modal-row"><span>Price</span><b>{pendingAdd.product.price > 0 ? money(pendingAdd.product.price) : 'Free'}</b></div>
+            <div className="modal-row"><span>Cover</span><b>{pendingAdd.image ? pendingAdd.image.name : 'Generated design'}</b></div>
             <div className="modal-row"><span>File</span><b>{pendingAdd.file ? pendingAdd.file.name : 'None — add later'}</b></div>
+            {pendingAdd.product.price > 0 && (
+              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0 2px', cursor: 'pointer', borderTop: '1px dashed var(--line-soft)', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  onChange={(e) => setPendingAdd((prev) => (prev ? { ...prev, notify: e.target.checked } : prev))}
+                />
+                <span>
+                  <b>Notify everyone about this new book</b>
+                  <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                    Sends "New arrival" to subscribers, past customers and signups
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
         )}
       </ConfirmModal>
@@ -843,6 +896,7 @@ function AddProductForm({ onSaved }) {
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [file, setFile] = useState(null)
+  const [image, setImage] = useState(null)
 
   const bind = (key) => ({
     value: f[key],
@@ -872,7 +926,7 @@ function AddProductForm({ onSaved }) {
         gradient: Math.floor(Math.random() * COVER_GRADIENTS.length),
         description: f.description.trim() || 'A fresh addition to the Keisha Store shelf. Full description coming soon.',
         ...(f.type === 'course' ? { lessons: 10, hours: 4 } : { pages: 100 }),
-      }, file)
+      }, file, image)
     } finally {
       setSaving(false)
     }
@@ -919,6 +973,20 @@ function AddProductForm({ onSaved }) {
         <div className="field full">
           <label htmlFor="np-desc">Short description</label>
           <textarea id="np-desc" placeholder="What is this product and who is it for?" {...bind('description')} />
+        </div>
+        <div className="field full">
+          <label htmlFor="np-cover">Cover image — PNG/JPG/WebP (replaces the generated design)</label>
+          <input
+            id="np-cover"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+            style={{ padding: '10px 14px', fontSize: 13 }}
+          />
+          <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+            Optional — without one, the shelf still shows Keisha&apos;s branded gradient cover.
+            Square-ish images look best on the shelf.
+          </span>
         </div>
         <div className="field full">
           <label htmlFor="np-file">Product file — PDF, e-book, course materials (delivered after payment)</label>

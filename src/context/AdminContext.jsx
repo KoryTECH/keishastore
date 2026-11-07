@@ -24,6 +24,7 @@ const toApp = (row) => ({
   gradient: row.gradient ?? 0,
   description: row.description ?? '',
   filePath: row.file_path ?? '',
+  imagePath: row.image_path ?? '',
 })
 
 const toDb = (p) => ({
@@ -166,6 +167,16 @@ export function AdminProvider({ children }) {
     return data
   }, [fetchBroadcasts])
 
+  // Live audience sizes ({ subscribers, everyone }) — signup emails
+  // are counted server-side (service role required to read auth).
+  const fetchAudienceCounts = useCallback(async () => {
+    const { data, error } = await supabase.functions.invoke('send-broadcast', {
+      body: { action: 'counts' },
+    })
+    if (error || data?.error) throw new Error(data?.error ?? error.message)
+    return data
+  }, [])
+
   // ---------- catalog ----------
   const fetchProducts = useCallback(async () => {
     setLoadingProducts(true)
@@ -209,6 +220,27 @@ export function AdminProvider({ children }) {
     const { data, error: updateError } = await supabase
       .from('products')
       .update({ file_path: path })
+      .eq('id', productId)
+      .select('*')
+      .single()
+    if (updateError) throw updateError
+
+    setProducts((prev) => prev.map((p) => (p.id === productId ? toApp(data) : p)))
+    return toApp(data)
+  }, [])
+
+  // Cover image → PUBLIC `product-images` bucket (anyone may look
+  // at covers; only admins change them — policy 11).
+  const uploadProductImage = useCallback(async (productId, file) => {
+    const path = `${productId}/${file.name}`
+    const { error } = await supabase.storage
+      .from('product-images')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (error) throw error
+
+    const { data, error: updateError } = await supabase
+      .from('products')
+      .update({ image_path: path })
       .eq('id', productId)
       .select('*')
       .single()
@@ -314,6 +346,7 @@ export function AdminProvider({ children }) {
       addProduct,
       deleteProduct,
       uploadProductFile,
+      uploadProductImage,
       refreshProducts: fetchProducts,
       orders,
       loadingOrders,
@@ -328,6 +361,7 @@ export function AdminProvider({ children }) {
       loadingBroadcasts,
       refreshBroadcasts: fetchBroadcasts,
       sendBroadcast,
+      fetchAudienceCounts,
       reviews,
       loadingReviews,
       refreshReviews: fetchReviews,
@@ -342,6 +376,7 @@ export function AdminProvider({ children }) {
       addProduct,
       deleteProduct,
       uploadProductFile,
+      uploadProductImage,
       fetchProducts,
       orders,
       loadingOrders,
@@ -356,6 +391,7 @@ export function AdminProvider({ children }) {
       loadingBroadcasts,
       fetchBroadcasts,
       sendBroadcast,
+      fetchAudienceCounts,
       reviews,
       loadingReviews,
       fetchReviews,

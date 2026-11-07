@@ -3,12 +3,17 @@
 // Sends one email to many recipients via Brevo. Callable ONLY by
 // a signed-in admin (verified against profiles.is_admin server-side).
 //
-// Request body:  { subject: string, body: string, audience: 'subscribers' | 'everyone' }
-// Response:      { total, sent, failed }
+// POST body:  { subject, body, audience: 'subscribers' | 'everyone' }
+//             or { action: 'counts' } for live audience sizes.
+// Response:   { total, sent, failed }  |  { subscribers, everyone }
+//
+// "everyone" = subscribers ∪ past customers ∪ ALL signup accounts
+// (auth.users read via service role — signup emails never leave
+// the server).
 //
 // Secrets (set with `supabase secrets set ...` — NEVER in Vercel):
 //   BREVO_API_KEY       — the API key v3 from Brevo (SMTP & API page)
-//   BREVO_SENDER_EMAIL  — the verified sender (e.g. k@gmail)
+//   BREVO_SENDER_EMAIL  — verified sender (e.g. you@gmail.com)
 //   BREVO_SENDER_NAME   — display name, e.g. "Keisha Store"
 // Auto-injected by Supabase: SUPABASE_URL, SUPABASE_ANON_KEY,
 // SUPABASE_SERVICE_ROLE_KEY (bypasses RLS — server only).
@@ -21,6 +26,8 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
@@ -31,17 +38,6 @@ Deno.serve(async (req) => {
     })
 
   try {
-    // ---------- secrets ----------
-    const apiKey = Deno.env.get('BREVO_API_KEY')
-    const senderEmail = Deno.env.get('BREVO_SENDER_EMAIL')
-    const senderName = Deno.env.get('BREVO_SENDER_NAME') ?? 'Keisha Store'
-    if (!apiKey || !senderEmail) {
-      return json(
-        { error: 'Email provider is not configured yet (missing BREVO secrets).' },
-        500,
-      )
-    }
-
     // ---------- who is calling? must be a signed-in admin ----------
     const auth = req.headers.get('Authorization') ?? ''
     if (!auth.startsWith('Bearer ')) return json({ error: 'Not signed in.' }, 401)
@@ -60,8 +56,25 @@ Deno.serve(async (req) => {
       .single()
     if (!me?.is_admin) return json({ error: 'Admins only.' }, 403)
 
-    // ---------- input ----------
-    const { subject, body, audience = 'subscribers' } = await req.json()
+    const { action, subject, body, audience = 'subscribers' } = await req.json()
+
+    // ---------- preview counts (no email sent) ----------
+    if (action === 'counts') {
+      const counts = await gatherAudienceCounts(service)
+      return json(counts)
+    }
+
+    // ---------- real send ----------
+    const apiKey = Deno.env.get('BREVO_API_KEY')
+    const senderEmail = Deno.env.get('BREVO_SENDER_EMAIL')
+    const senderName = Deno.env.get('BREVO_SENDER_NAME') ?? 'Keisha Store'
+    if (!apiKey || !senderEmail) {
+      return json(
+        { error: 'Email provider is not configured yet (missing BREVO secrets).' },
+        500,
+      )
+    }
+
     const cleanSubject = String(subject ?? '').trim()
     const cleanBody = String(body ?? '').trim()
     if (!cleanSubject || cleanSubject.length > 150) {
@@ -74,21 +87,10 @@ Deno.serve(async (req) => {
       return json({ error: 'Unknown audience.' }, 400)
     }
 
-    // ---------- gather recipients (service role => sees all) ----------
-    const emails = new Set<string>()
+    const counts = await gatherAudienceCounts(service)
+    const emails = audience === 'everyone' ? counts.allEmails : counts.subscriberEmails
 
-    const { data: subs } = await service
-      .from('subscribers')
-      .select('email')
-      .order('created_at', { ascending: true })
-    ;(subs ?? []).forEach((s: { email: string }) => emails.add(s.email.toLowerCase()))
-
-    if (audience === 'everyone') {
-      const { data: orders } = await service.from('orders').select('email')
-      ;(orders ?? []).forEach((o: { email: string }) => emails.add(o.email.toLowerCase()))
-    }
-
-    const recipients = [...emails].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+    const recipients = emails.filter((e: string) => EMAIL_RE.test(e))
     if (recipients.length === 0) {
       return json({ error: 'Nobody to send to yet — the list is empty.' }, 400)
     }
@@ -108,7 +110,7 @@ Deno.serve(async (req) => {
     for (let i = 0; i < recipients.length; i += 10) {
       const batch = recipients.slice(i, i + 10)
       const results = await Promise.allSettled(
-        batch.map((email) =>
+        batch.map((email: string) =>
           fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
             headers: {
@@ -150,6 +152,47 @@ Deno.serve(async (req) => {
     return json({ error: err?.message ?? 'Unexpected error.' }, 500)
   }
 })
+
+// ------------------------------------------------------------
+// Audience gathering — subscribers ∪ order emails ∪ signup emails
+// ------------------------------------------------------------
+async function gatherAudienceCounts(service: any) {
+  const emails = new Set<string>()
+
+  const { data: subs } = await service
+    .from('subscribers')
+    .select('email')
+    .order('created_at', { ascending: true })
+  ;(subs ?? []).forEach((s: { email: string }) => emails.add(s.email.toLowerCase()))
+
+  const { data: orders } = await service.from('orders').select('email')
+  ;(orders ?? []).forEach((o: { email: string }) => emails.add(o.email.toLowerCase()))
+
+  const subscriberEmails = [...emails]
+
+  // every signup account (auth.users), paged with the service client
+  const perPage = 200
+  let page = 1
+  while (true) {
+    const { data: users, error } = await service.auth.admin.listUsers({ page, perPage })
+    if (error || !users || users.length === 0) break
+    ;(users as Array<{ email?: string | null }>).forEach((u) => {
+      if (u.email) emails.add(u.email.toLowerCase())
+    })
+    if (users.length < perPage) break
+    page += 1
+  }
+
+  const everyone = [...emails.filter((e) => EMAIL_RE.test(e))]
+
+  return {
+    subscriberEmails,
+    everyoneEmails: everyone,
+    allEmails: everyone,
+    subscribers: subscriberEmails.length,
+    everyone: everyone.length,
+  }
+}
 
 function escapeHtml(s: string) {
   return s

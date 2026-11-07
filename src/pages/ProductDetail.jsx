@@ -171,7 +171,14 @@ export default function ProductDetail() {
 
               <div className="detail-ctas">
                 {isFree ? (
-                  product.filePath ? (
+                  !user ? (
+                    <button
+                      className="btn btn-gold"
+                      onClick={() => navigate(`/login?next=/product/${product.id}`)}
+                    >
+                      <Download size={15} /> Sign in to Download Free Copy
+                    </button>
+                  ) : product.filePath ? (
                     <button className="btn btn-gold" onClick={downloadFree} disabled={dlBusy}>
                       {dlBusy ? (
                         <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
