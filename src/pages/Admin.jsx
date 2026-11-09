@@ -13,7 +13,9 @@ import {
   DollarSign,
   ClipboardList,
   ShieldCheck,
+  Link2,
   FileUp,
+  FileDown,
   Send,
   MessageSquare,
 } from 'lucide-react'
@@ -110,8 +112,12 @@ function AdminPanel() {
 
 /* ================= DASHBOARD ================= */
 function Dashboard({ setTab }) {
-  const { stats, products, orders, loadingOrders } = useAdmin()
+  const { stats, products, orders, loadingOrders, downloads, loadingDownloads, productById } = useAdmin()
   const s = stats()
+
+  // downloads in the last 7 days (the list is capped at the latest 100)
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const weekDownloads = downloads.filter((d) => new Date(d.created_at).getTime() > weekAgo).length
 
   const cards = [
     {
@@ -122,6 +128,7 @@ function Dashboard({ setTab }) {
     },
     { label: 'Total Earnings', value: money(s.revenue), sub: 'Refunds excluded', icon: DollarSign, gold: true },
     { label: 'Units Sold', value: s.units, sub: 'Books + courses delivered', icon: TrendingUp },
+    { label: 'File Downloads', value: downloads.length, sub: `${weekDownloads} in the last 7 days`, icon: FileDown },
     { label: 'Live Products', value: s.productCount, sub: 'Across all categories', icon: Package },
   ]
 
@@ -208,6 +215,55 @@ function Dashboard({ setTab }) {
           </tbody>
         </table>
       </div>
+
+      <div className="table-card" style={{ marginTop: 24 }}>
+        <div className="table-head">
+          <h3>Recent Downloads</h3>
+          <span className="muted" style={{ fontSize: 12 }}>Every time someone pulls a file, it lands here</span>
+        </div>
+        <table className="nice">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Email</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loadingDownloads ? (
+              <tr>
+                <td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                  Loading downloads…
+                </td>
+              </tr>
+            ) : (
+              <>
+                {downloads.length === 0 && (
+                  <tr>
+                    <td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 30 }}>
+                      No downloads yet — grab a free copy yourself and watch it appear here.
+                    </td>
+                  </tr>
+                )}
+                {downloads.slice(0, 8).map((d) => (
+                  <tr key={d.id}>
+                    <td><b>{productById(d.product_id)?.title ?? 'Archived product'}</b></td>
+                    <td className="muted">{d.email ?? 'Signed-in reader'}</td>
+                    <td className="muted">
+                      {new Date(d.created_at).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }
@@ -274,7 +330,7 @@ function NewsletterTab() {
       showToast(
         result.failed > 0
           ? `Sent to ${result.sent} of ${result.total} — ${result.failed} failed (Brevo daily limit?)`
-          : `Delivered to all ${result.sent} ${recipientCount === 1 ? 'person' : 'people'} 🎉`,
+          : `Delivered to all ${result.sent} ${recipientCount === 1 ? 'person' : 'people'}.`,
       )
       if (result.failed === 0) {
         setSubject('')
@@ -370,7 +426,7 @@ function NewsletterTab() {
             <label htmlFor="nl-subject">Subject line</label>
             <input
               id="nl-subject"
-              placeholder="e.g. New arrivals this week 📚"
+              placeholder="e.g. New arrivals this week"
               maxLength={150}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -684,6 +740,25 @@ function ProductsTab() {
       0,
     )
 
+  // Copy a direct link to this product's storefront page, ready to
+  // paste into a WhatsApp chat, an email, anywhere.
+  const copyLink = async (p) => {
+    const url = `${window.location.origin}/product/${p.id}`
+    try {
+      await navigator.clipboard.writeText(url)
+      showToast(`Link to "${p.title}" copied — paste it anywhere`)
+    } catch {
+      // clipboard permission denied (http or old browser) — fall back
+      const input = document.createElement('input')
+      input.value = url
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      input.remove()
+      showToast(`Link to "${p.title}" copied — paste it anywhere`)
+    }
+  }
+
   const confirmAdd = async () => {
     const { product, file, image, notify } = pendingAdd
     setBusy(true)
@@ -808,6 +883,14 @@ function ProductsTab() {
                   </td>
                   <td>{salesFor(p.id)}</td>
                   <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="icon-btn"
+                      aria-label={`Copy link to ${p.title}`}
+                      title="Copy the link to this book — paste it anywhere to send someone straight to its page"
+                      onClick={() => copyLink(p)}
+                    >
+                      <Link2 size={15} />
+                    </button>
                     <button
                       className="icon-btn"
                       aria-label={`Delete ${p.title}`}
@@ -998,7 +1081,8 @@ function AddProductForm({ onSaved }) {
           />
           <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
             PDF, e-book, ZIP, DOC, MP3 or MP4 — any file type. If you're on a phone and don't see
-            your PDF, save it out of WhatsApp first (open the PDF → ⋮ → Save), then use My Files / Documents here.
+            your PDF, save it out of WhatsApp first (open the PDF, tap the three-dot menu, then
+            Save), then use My Files / Documents here.
           </span>
           <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
             Optional — customers download it from My Shelf once their order is marked paid. You can skip it now and re-add the product later with a file.

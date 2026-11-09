@@ -14,7 +14,7 @@ import { money, getTypeLabel, getIncludes } from '../data/products.js'
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { productById, products } = useAdmin()
+  const { productById, products, logDownload } = useAdmin()
   const { user, profile } = useAuth()
   const { add } = useCart()
   const [toast, setToast] = useState('')
@@ -87,6 +87,7 @@ export default function ProductDetail() {
         .createSignedUrl(product.filePath, 300)
       if (error) throw error
       window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+      logDownload(product.id, user?.email).catch(() => {})
     } catch (err) {
       showToast(`Download failed — ${err.message}`)
     } finally {
@@ -295,7 +296,7 @@ export default function ProductDetail() {
                       }}
                     >
                       Thank you — your review is in! It appears here once Keisha gives it a
-                      quick look. ✅
+                      quick look.
                     </p>
                   ) : (
                     <>

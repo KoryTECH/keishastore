@@ -11,7 +11,7 @@ export default function Footer() {
     const input = e.target.elements.email
     const result = await subscribeToList(input.value)
     if (result.status === 'subscribed') {
-      setNote('Welcome to the reading community 🎉')
+      setNote('Welcome to the reading community.')
       e.target.reset()
     } else if (result.status === 'exists') {
       setNote('You are already on the list.')

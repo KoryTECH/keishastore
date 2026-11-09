@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useAuth } from './AuthContext.jsx'
 
 const AdminContext = createContext(null)
 
@@ -51,6 +52,12 @@ const fmtDate = (ts) =>
   })
 
 export function AdminProvider({ children }) {
+  // The session has to hydrate before RLS reports who we really are.
+  // Admin-only reads below refetch whenever `user` flips — reviews,
+  // subscribers, broadcasts and orders otherwise stay stuck at the
+  // anonymous (empty) snapshot taken during boot.
+  const { user } = useAuth()
+
   const [products, setProducts] = useState([])
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [productsError, setProductsError] = useState('')
@@ -155,6 +162,39 @@ export function AdminProvider({ children }) {
     setReviews((prev) => prev.filter((r) => r.id !== id))
     if (data?.product_id) await recomputeProductStars(data.product_id)
   }, [recomputeProductStars])
+
+  // ---------- download log (who opened a file, and when) ----------
+  const [downloads, setDownloads] = useState([])
+  const [loadingDownloads, setLoadingDownloads] = useState(true)
+
+  const fetchDownloads = useCallback(async () => {
+    setLoadingDownloads(true)
+    const { data } = await supabase
+      .from('downloads')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    setDownloads(data ?? [])
+    setLoadingDownloads(false)
+  }, [])
+
+  // Called by the storefront right after a download link is minted.
+  // Best-effort: a logging failure never blocks the download itself.
+  const logDownload = useCallback(
+    async (productId, email) => {
+      const {
+        data: { user: current },
+      } = await supabase.auth.getUser()
+      if (!current) return
+      await supabase.from('downloads').insert({
+        product_id: productId,
+        user_id: current.id,
+        email: email ?? current.email ?? null,
+      })
+      fetchDownloads().catch(() => {})
+    },
+    [fetchDownloads],
+  )
 
   // Sends through the `send-broadcast` Edge Function — the Brevo
   // key never leaves the server. Returns { total, sent, failed }.
@@ -316,11 +356,15 @@ export function AdminProvider({ children }) {
 
   useEffect(() => {
     fetchProducts()
+  }, [fetchProducts])
+
+  useEffect(() => {
     fetchOrders()
     fetchSubscribers().catch(() => {})
     fetchBroadcasts().catch(() => {})
     fetchReviews().catch(() => {})
-  }, [fetchProducts, fetchOrders, fetchSubscribers, fetchBroadcasts, fetchReviews])
+    fetchDownloads().catch(() => {})
+  }, [user, fetchOrders, fetchSubscribers, fetchBroadcasts, fetchReviews, fetchDownloads])
 
   // ---------- stats ----------
   const stats = useCallback(() => {
@@ -367,6 +411,10 @@ export function AdminProvider({ children }) {
       refreshReviews: fetchReviews,
       setReviewApproved,
       deleteReview,
+      downloads,
+      loadingDownloads,
+      refreshDownloads: fetchDownloads,
+      logDownload,
     }),
     [
       products,
@@ -397,6 +445,10 @@ export function AdminProvider({ children }) {
       fetchReviews,
       setReviewApproved,
       deleteReview,
+      downloads,
+      loadingDownloads,
+      fetchDownloads,
+      logDownload,
     ],
   )
 

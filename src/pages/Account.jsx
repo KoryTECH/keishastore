@@ -17,7 +17,7 @@ const downloadFile = async (path) => {
 
 export default function Account() {
   const { user, loading: authLoading, signOut } = useAuth()
-  const { productById } = useAdmin()
+  const { productById, logDownload } = useAdmin()
   const [orders, setOrders] = useState([])
   const [loadingOrders, setLoadingOrders] = useState(true)
   const [error, setError] = useState('')
@@ -67,11 +67,12 @@ export default function Account() {
   }
   if (!user) return <Navigate to="/login?next=/account" replace />
 
-  const handleDownload = async (path) => {
+  const handleDownload = async (path, productId) => {
     if (busyPath) return
     setBusyPath(path)
     try {
       await downloadFile(path)
+      logDownload(productId, user?.email).catch(() => {})
     } catch (err) {
       showToast(`Download failed — ${err.message}`)
     } finally {
@@ -152,7 +153,7 @@ export default function Account() {
                         {p?.filePath ? (
                           <button
                             className="btn btn-gold btn-sm"
-                            onClick={() => handleDownload(p.filePath)}
+                            onClick={() => handleDownload(p.filePath, p.id)}
                             disabled={busyPath === p.filePath}
                           >
                             {busyPath === p.filePath ? (

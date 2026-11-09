@@ -101,7 +101,7 @@ export default function Home() {
         {/* full-width shelf stage */}
         <div className="hero-stage">
           <span className="hero-glyph" aria-hidden="true">K</span>
-          <span className="hero-mono-label">Instant download ✳ Small press ✳ Lifetime access</span>
+          <span className="hero-mono-label">Instant download · Small press · Lifetime access</span>
           <div className="hero-badge">
             New<br />Arrivals<br />
             <span>This Week</span>
@@ -242,7 +242,7 @@ export default function Home() {
                   const input = e.target.elements.email
                   const result = await subscribeToList(input.value)
                   if (result.status === 'subscribed') {
-                    showToast('Subscribed — welcome to the community 🎉')
+                    showToast('Subscribed — welcome to the community.')
                     e.target.reset()
                   } else if (result.status === 'exists') {
                     showToast('You are already on the list — see you in the next letter')
