@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useAdmin } from '../context/AdminContext.jsx'
 import Toast from '../components/Toast.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import Stars from '../components/Stars.jsx'
 import { money, getTypeLabel, CATEGORIES, COVER_GRADIENTS } from '../data/products.js'
 
 const TABS = [
