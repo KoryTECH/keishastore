@@ -293,6 +293,7 @@ function NewsletterTab() {
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
   const [liveCounts, setLiveCounts] = useState(null) // { subscribers, everyone } from the server
+  const [countsErr, setCountsErr] = useState('')
 
   const showToast = (msg) => {
     setToast(msg)
@@ -307,9 +308,16 @@ function NewsletterTab() {
 
   useEffect(() => {
     let alive = true
+    setCountsErr('')
     fetchAudienceCounts()
       .then((c) => alive && setLiveCounts(c))
-      .catch(() => alive && setLiveCounts(null))
+      .catch((e) => {
+        if (!alive) return
+        setLiveCounts(null)
+        setCountsErr(
+          'Live audience counts could not load — the numbers below count only subscribers and past customers. Re-run "supabase functions deploy send-broadcast" so signup accounts are included.',
+        )
+      })
     return () => {
       alive = false
     }
@@ -350,13 +358,13 @@ function NewsletterTab() {
     {
       id: 'subscribers',
       label: 'Subscribers only',
-      desc: 'Everyone who gave us their email on the storefront',
+      desc: 'People who gave us their email on the storefront',
       count: audienceSizes.subscribers,
     },
     {
       id: 'everyone',
-      label: 'Everyone — subscribers, customers & signups',
-      desc: 'One deduped list: newsletter form, past orders and every signup account',
+      label: 'Everyone on the platform',
+      desc: 'Every signup account, plus subscribers and past customers without one — one deduped list',
       count: audienceSizes.everyone,
     },
   ]
@@ -421,6 +429,11 @@ function NewsletterTab() {
             </label>
           ))}
         </div>
+        {countsErr && (
+          <div className="login-error" style={{ textAlign: 'left', marginBottom: 20, fontSize: 13 }}>
+            {countsErr}
+          </div>
+        )}
 
         <div className="form-grid">
           <div className="field full">
@@ -532,7 +545,7 @@ function NewsletterTab() {
         onConfirm={doSend}
       >
         <div className="modal-rows">
-          <div className="modal-row"><span>Audience</span><b>{audience === 'everyone' ? 'Everyone (subscribers, customers & signups)' : 'Subscribers'}</b></div>
+          <div className="modal-row"><span>Audience</span><b>{audience === 'everyone' ? 'Everyone on the platform' : 'Subscribers only'}</b></div>
           <div className="modal-row"><span>Recipients</span><b>{recipientCount}</b></div>
           <div className="modal-row"><span>Subject</span><b>{subject.trim()}</b></div>
         </div>
