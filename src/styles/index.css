@@ -1816,6 +1816,7 @@ table.nice tr:hover td { background: #FBF8F3; }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.spin { animation: spin 1s linear infinite; }
 /* ================= CONFIRM MODAL — END ================= */
 
 /* review status chips (admin Reviews tab) */

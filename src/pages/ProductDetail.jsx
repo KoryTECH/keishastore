@@ -14,7 +14,7 @@ import { money, getTypeLabel, getIncludes } from '../data/products.js'
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { productById, products, logDownload } = useAdmin()
+  const { productById, products, loadingProducts, logDownload } = useAdmin()
   const { user, profile } = useAuth()
   const { add } = useCart()
   const [toast, setToast] = useState('')
@@ -96,6 +96,19 @@ export default function ProductDetail() {
   }
 
   if (!product) {
+    // The catalog is still flying in from the database — not the same
+    // thing as a missing book. Show a real loading state instead of
+    // pretending the link is dead.
+    if (loadingProducts) {
+      return (
+        <div className="admin-boot" role="status">
+          <span className="brand-mark" style={{ width: 52, height: 52 }}>
+            <Loader2 size={22} className="spin" />
+          </span>
+          Pulling the book off the shelf…
+        </div>
+      )
+    }
     return (
       <section className="section">
         <div className="container">

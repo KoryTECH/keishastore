@@ -10,10 +10,79 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* Splash: pure HTML/CSS, visible the instant the document arrives,
+         before the JS bundle finishes. React removes it once mounted. */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #f7f3ea;
+        opacity: 1;
+        transition: opacity 0.35s ease;
+      }
+      #splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .splash-mark {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: #0d2118;
+        color: #e9c37c;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: splash-pulse 1.6s ease-in-out infinite;
+      }
+      #splash .splash-word {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #4a5a50;
+      }
+      @keyframes splash-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(13, 33, 24, 0.18);
+        }
+        50% {
+          transform: scale(1.05);
+          box-shadow: 0 0 0 14px rgba(13, 33, 24, 0);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="splash-mark">
+        <svg
+          width="26"
+          height="26"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-20" />
+          <path d="M8 7h8" />
+          <path d="M8 11h8" />
+        </svg>
+      </div>
+      <div class="splash-word">Opening the store</div>
+    </div>
     <div id="root"></div>
-    
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
