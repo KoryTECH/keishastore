@@ -213,6 +213,12 @@ export function AdminProvider({ children }) {
     const { data, error } = await supabase.functions.invoke('send-broadcast', {
       body: { action: 'counts' },
     })
+    // A non-2xx reply hides the message in error.context — unwrap it
+    // so the dashboard shows the server's own reason.
+    if (error && typeof error.context?.json === 'function') {
+      const payload = await error.context.json().catch(() => null)
+      throw new Error(payload?.error ?? error.message)
+    }
     if (error || data?.error) throw new Error(data?.error ?? error.message)
     return data
   }, [])

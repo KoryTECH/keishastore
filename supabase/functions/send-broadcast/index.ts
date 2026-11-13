@@ -170,16 +170,19 @@ async function gatherAudienceCounts(service: any) {
 
   const subscriberEmails = [...emails]
 
-  // every signup account (auth.users), paged with the service client
+  // every signup account (auth.users), paged with the service client.
+  // NOTE: listUsers returns a wrapper ({ users: [...] }) in current
+  // supabase-js — handle both shapes defensively.
   const perPage = 200
   let page = 1
   while (true) {
-    const { data: users, error } = await service.auth.admin.listUsers({ page, perPage })
-    if (error || !users || users.length === 0) break
-    ;(users as Array<{ email?: string | null }>).forEach((u) => {
+    const { data: pageData, error } = await service.auth.admin.listUsers({ page, perPage })
+    if (error || !pageData) break
+    const list = Array.isArray(pageData) ? pageData : (pageData.users ?? [])
+    ;(list as Array<{ email?: string | null }>).forEach((u) => {
       if (u.email) emails.add(u.email.toLowerCase())
     })
-    if (users.length < perPage) break
+    if (list.length < perPage) break
     page += 1
   }
 
